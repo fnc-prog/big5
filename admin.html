@@ -45,6 +45,23 @@
       </button>
     </div>
 
+    <!-- Yayına Alma Kutusu (Tüm İnternet Ziyaretçileri İçin) -->
+    <div class="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 flex flex-wrap items-center justify-between gap-4">
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <h3 class="font-bold text-white text-sm">Fotoğrafları Herkes İçin Yayına Al</h3>
+        </div>
+        <p class="text-xs text-slate-300">
+          Fotoğrafları yükledikten sonra bu butona basarak <strong>photos.js</strong> dosyasını kaydedin. Ardından <strong>GitHuba_Yukle.bat</strong> ile GitHub'a gönderin. Sitenizi ziyaret eden herkes fotoğrafları görecektir.
+        </p>
+      </div>
+
+      <button onclick="adminApp.publishToPhotosJs()" class="btn-primary bg-emerald-600 hover:bg-emerald-500 px-5 py-2.5 text-xs font-bold shadow-lg shadow-emerald-600/30">
+        <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i> Fotoğrafları Kaydet (photos.js)
+      </button>
+    </div>
+
     <!-- Hızlı Aksiyonlar -->
     <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
       <div>

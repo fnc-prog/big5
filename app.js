@@ -61,21 +61,41 @@ class Big5App {
   async ensureInitialData() {
     for (const catId of ['kizlar', 'erkekler']) {
       let data = await Database.getCategory(catId);
+      const sharedList = (window.BIG5_SHARED_DATA && window.BIG5_SHARED_DATA[catId]) ? window.BIG5_SHARED_DATA[catId] : [];
+
       if (!data) {
         data = {
           id: catId,
           name: catId === 'kizlar' ? 'Big5 Kızlar' : 'Big5 Erkekler',
-          photos: Array.from({ length: 15 }, (_, i) => ({
-            id: `${catId}_photo_${i + 1}`,
-            slot: i + 1,
-            name: `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${i + 1}`,
-            dataUrl: null,
-            scores: []
-          })),
+          photos: Array.from({ length: 15 }, (_, i) => {
+            const shared = sharedList[i];
+            return {
+              id: `${catId}_photo_${i + 1}`,
+              slot: i + 1,
+              name: (shared && shared.name) ? shared.name : `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${i + 1}`,
+              dataUrl: (shared && shared.dataUrl) ? shared.dataUrl : null,
+              scores: []
+            };
+          }),
           roundsCount: 0,
           lastUpdated: new Date().toISOString()
         };
         await Database.saveCategory(data);
+      } else if (sharedList.length > 0) {
+        // Sunucudan (photos.js) gelen genel fotoğraflarla yerel fotoğrafları güncelle
+        let updated = false;
+        sharedList.forEach((shared, i) => {
+          if (shared && shared.dataUrl && data.photos[i]) {
+            if (data.photos[i].dataUrl !== shared.dataUrl || data.photos[i].name !== shared.name) {
+              data.photos[i].dataUrl = shared.dataUrl;
+              if (shared.name) data.photos[i].name = shared.name;
+              updated = true;
+            }
+          }
+        });
+        if (updated) {
+          await Database.saveCategory(data);
+        }
       }
     }
   }

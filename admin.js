@@ -294,11 +294,94 @@ class AdminPanel {
     this.showToast('15 örnek fotoğraf yüklendi!');
   }
 
+  async publishToPhotosJs() {
+    const kizlarData = await Database.getCategory('kizlar');
+    const erkeklerData = await Database.getCategory('erkekler');
+
+    const cleanPhotos = (catData) => {
+      if (!catData || !catData.photos) return [];
+      return catData.photos.map(p => ({
+        slot: p.slot,
+        name: p.name || `#${p.slot}`,
+        dataUrl: p.dataUrl || null
+      }));
+    };
+
+    const sharedData = {
+      kizlar: cleanPhotos(kizlarData),
+      erkekler: cleanPhotos(erkeklerData)
+    };
+
+    const fileContent = `/**
+ * Big5 Genel Fotoğraf Verisi (GitHub Pages üzerinden tüm ziyaretçilere sunulur)
+ * Güncellenme Tarihi: ${new Date().toLocaleString('tr-TR')}
+ */
+window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
+`;
+
+    // Modern showSaveFilePicker varsa doğrudan üzerine yazdır, yoksa indir
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: 'photos.js',
+          types: [{
+            description: 'JavaScript Dosyası',
+            accept: { 'text/javascript': ['.js'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(fileContent);
+        await writable.close();
+        this.showToast('photos.js başarıyla kaydedildi! Şimdi GitHuba_Yukle.bat ile GitHub\'a gönderin.');
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
+    // Standart indirme alternatifi
+    const blob = new Blob([fileContent], { type: 'text/javascript;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'photos.js';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    this.showToast('photos.js indirildi! Bu dosyayı klasöre kopyalayıp GitHuba_Yukle.bat ile GitHub\'a gönderin.');
+  }
+
+  // Fotoğrafları otomatik optimize et ve sıkıştır (Maksimum 800px, %82 kalite)
   readFile(file) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = (e) => reject(e);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 800;
+
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.src = e.target.result;
+      };
       reader.readAsDataURL(file);
     });
   }
