@@ -394,23 +394,38 @@ class Big5App {
   }
 
   async resetAllScores() {
+    // Kategori seçili değilse işlem yapma
+    if (!this.currentCategory || !this.categoryData) {
+      this.showToast('Lütfen önce bir kategori seçin.', 'error');
+      return;
+    }
+
     const isGirls = this.currentCategory === 'kizlar';
     const catName = isGirls ? 'Kızlar' : 'Erkekler';
     const confirmReset = confirm(`${catName} kategorisindeki tüm turları ve verilen puanları sıfırlamak istediğinize emin misiniz?\n\n(Fotoğraflarınız silinmez, sadece puanlar 1. Tura döner)`);
     if (!confirmReset) return;
 
-    this.categoryData.photos.forEach(p => {
-      p.scores = [];
-    });
-    this.categoryData.roundsCount = 0;
-    this.categoryData.lastUpdated = new Date().toISOString();
-    await Database.saveCategory(this.categoryData);
+    try {
+      this.categoryData.photos.forEach(p => {
+        p.scores = [];
+      });
+      this.categoryData.roundsCount = 0;
+      this.categoryData.lastUpdated = new Date().toISOString();
+      await Database.saveCategory(this.categoryData);
 
-    this.currentRound = 1;
-    this.tempScores = new Array(15).fill(null);
-    this.showRating();
-    this.showToast(`${catName} puanları sıfırlandı. 1. Turdan başlayabilirsiniz.`);
-    await this.updateHomeStatuses();
+      this.currentRound = 1;
+      this.tempScores = new Array(15).fill(null);
+      this.initTempScores(false);
+
+      // Sonuçlar ve puanlama ekranlarını gizle, puanlama ekranını göster
+      document.getElementById('view-results').classList.add('hidden');
+      this.showRating();
+      this.showToast(`${catName} puanları sıfırlandı! 1. Turdan başlayabilirsiniz.`);
+      await this.updateHomeStatuses();
+    } catch (err) {
+      console.error('Reset hatası:', err);
+      this.showToast('Sıfırlama sırasında bir hata oluştu!', 'error');
+    }
   }
 
   navigate(view) {
@@ -439,13 +454,16 @@ class Big5App {
     m.classList.remove('flex');
   }
 
-  showToast(msg) {
+  showToast(msg, type = 'success') {
     const c = document.getElementById('toast-container');
     const t = document.createElement('div');
-    t.className = 'bg-slate-800 text-white text-xs px-3 py-2 rounded-lg shadow-lg border border-slate-700';
+    const colorClass = type === 'error'
+      ? 'bg-rose-900 text-white border-rose-700'
+      : 'bg-slate-800 text-white border-slate-700';
+    t.className = `${colorClass} text-xs px-3 py-2 rounded-lg shadow-lg border`;
     t.textContent = msg;
     c.appendChild(t);
-    setTimeout(() => t.remove(), 2500);
+    setTimeout(() => t.remove(), 2800);
   }
 }
 
