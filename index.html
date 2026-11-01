@@ -78,10 +78,13 @@
           <span id="round-indicator" class="text-xs text-pink-400 font-semibold">1. Tur</span>
         </div>
 
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
           <span id="progress-indicator" class="text-xs font-bold text-slate-400">0 / 15 Puanlandı</span>
           <button id="btn-show-results-top" onclick="app.showResults()" class="hidden text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
             Sonuçlar
+          </button>
+          <button onclick="app.resetAllScores()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-950/50 text-slate-400 hover:text-rose-400 border border-slate-800 transition" title="Puanları sıfırla">
+            <i class="fa-solid fa-rotate-left mr-1"></i> Sıfırla
           </button>
         </div>
       </div>
@@ -127,6 +130,9 @@
           </button>
           <button onclick="app.editLatestRound()" class="btn-secondary text-xs py-2 px-3">
             <i class="fa-solid fa-pen"></i> Puanları Düzenle
+          </button>
+          <button onclick="app.resetAllScores()" class="btn-danger text-xs py-2 px-3" title="Tüm puanları sıfırla">
+            <i class="fa-solid fa-rotate-left"></i> Puanları Sıfırla
           </button>
         </div>
       </div>

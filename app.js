@@ -393,6 +393,26 @@ class Big5App {
     this.showRating();
   }
 
+  async resetAllScores() {
+    const isGirls = this.currentCategory === 'kizlar';
+    const catName = isGirls ? 'Kızlar' : 'Erkekler';
+    const confirmReset = confirm(`${catName} kategorisindeki tüm turları ve verilen puanları sıfırlamak istediğinize emin misiniz?\n\n(Fotoğraflarınız silinmez, sadece puanlar 1. Tura döner)`);
+    if (!confirmReset) return;
+
+    this.categoryData.photos.forEach(p => {
+      p.scores = [];
+    });
+    this.categoryData.roundsCount = 0;
+    this.categoryData.lastUpdated = new Date().toISOString();
+    await Database.saveCategory(this.categoryData);
+
+    this.currentRound = 1;
+    this.tempScores = new Array(15).fill(null);
+    this.showRating();
+    this.showToast(`${catName} puanları sıfırlandı. 1. Turdan başlayabilirsiniz.`);
+    await this.updateHomeStatuses();
+  }
+
   navigate(view) {
     if (view === 'home') {
       document.getElementById('view-rating').classList.add('hidden');
