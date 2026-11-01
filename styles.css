@@ -1,0 +1,170 @@
+/* Big 5 Fotoğraf Puanlama & Sıralama - Özel Stiller */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+/* Aktif Sekme Stili */
+.active-tab {
+  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);
+}
+
+/* Buton Şablonları */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.75rem;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: #ffffff;
+  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px -4px rgba(236, 72, 153, 0.4);
+  filter: brightness(1.08);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #e2e8f0;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.btn-secondary:hover {
+  background-color: #334155;
+  color: #ffffff;
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #f87171;
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.btn-danger:hover {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+/* Puan Seçim Butonları */
+.score-pill-btn {
+  transition: all 0.15s ease;
+}
+.score-pill-btn:hover {
+  transform: scale(1.08);
+}
+.score-pill-btn.active {
+  background: linear-gradient(135deg, #ec4899, #8b5cf6) !important;
+  color: white !important;
+  border-color: #f472b6 !important;
+  font-weight: 800;
+  box-shadow: 0 0 14px rgba(236, 72, 153, 0.4);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Özel Slider (Range) Stili */
+input[type=range] {
+  -webkit-appearance: none;
+  background: #1e293b;
+  border-radius: 9999px;
+  height: 8px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ec4899;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.5);
+  border: 2px solid #ffffff;
+  transition: transform 0.1s ease;
+}
+input[type=range]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* Yazdırma Modu */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  header, #subtab-photos, #subtab-rate, .btn-primary, .btn-secondary, .btn-danger, #header-context, #toast-container {
+    display: none !important;
+  }
+  #view-category, #subtab-ranking {
+    display: block !important;
+  }
+  .bg-slate-900\/70, .bg-slate-900\/60, .bg-slate-900\/40, .bg-slate-950\/60 {
+    background: transparent !important;
+    color: black !important;
+    border: 1px solid #ccc !important;
+  }
+  table {
+    color: black !important;
+  }
+  th, td {
+    border-color: #ddd !important;
+    color: black !important;
+  }
+  .text-white {
+    color: black !important;
+  }
+  .text-slate-400, .text-slate-300 {
+    color: #444 !important;
+  }
+}

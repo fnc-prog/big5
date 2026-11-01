@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Big5 Puanlama</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
+
+  <!-- Üst Bar -->
+  <header class="border-b border-slate-900 bg-slate-950/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-2 cursor-pointer" onclick="app.navigate('home')">
+        <span class="w-2.5 h-2.5 rounded-full bg-pink-500"></span>
+        <span id="nav-brand-title" class="font-extrabold text-white text-base tracking-tight">Big5 Puanlama</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="btn-back-home" onclick="app.navigate('home')" class="hidden text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 transition">
+          <i class="fa-solid fa-arrow-left mr-1"></i> Geri
+        </button>
+        <a href="admin.html" title="Yönetici Paneli (Fotoğraf Yükleme)" class="p-2 text-slate-600 hover:text-slate-300 rounded-lg transition">
+          <i class="fa-solid fa-gear text-sm"></i>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-8">
+
+    <!-- 1. GİRİŞ: KATEGORİ SEÇİMİ -->
+    <section id="view-home" class="space-y-8 animate-fade-in max-w-xl mx-auto pt-6 text-center">
+      <div>
+        <h1 class="text-3xl font-extrabold text-white tracking-tight">Big5 Puanlama</h1>
+        <p class="text-xs text-slate-500 mt-1">Lütfen puanlamak istediğiniz grubu seçin</p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Kızlar -->
+        <button onclick="app.selectCategory('kizlar')" 
+                class="group p-6 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-pink-500/70 transition-all text-left flex flex-col justify-between h-40">
+          <div class="w-10 h-10 rounded-xl bg-pink-500/10 text-pink-400 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-venus"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-white group-hover:text-pink-400 transition">Big5 Kızlar</h2>
+            <span id="home-kizlar-status" class="text-xs text-slate-500">15 Fotoğraf</span>
+          </div>
+        </button>
+
+        <!-- Erkekler -->
+        <button onclick="app.selectCategory('erkekler')" 
+                class="group p-6 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-indigo-500/70 transition-all text-left flex flex-col justify-between h-40">
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-mars"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-white group-hover:text-indigo-400 transition">Big5 Erkekler</h2>
+            <span id="home-erkekler-status" class="text-xs text-slate-500">15 Fotoğraf</span>
+          </div>
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. PUANLAMA EKRANI -->
+    <section id="view-rating" class="hidden space-y-6 animate-fade-in">
+      
+      <!-- Başlık ve Durum -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-900">
+        <div>
+          <h2 id="category-page-title" class="text-xl font-bold text-white">Big5 Kızlar Puanlama</h2>
+          <span id="round-indicator" class="text-xs text-pink-400 font-semibold">1. Tur</span>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <span id="progress-indicator" class="text-xs font-bold text-slate-400">0 / 15 Puanlandı</span>
+          <button id="btn-show-results-top" onclick="app.showResults()" class="hidden text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+            Sonuçlar
+          </button>
+        </div>
+      </div>
+
+      <!-- Fotoğraflar Henüz Yüklenmediyse Uyarısı -->
+      <div id="no-photos-warning" class="hidden text-center py-12 space-y-3">
+        <p class="text-sm text-slate-400">Bu kategori için fotoğraflar henüz yüklenmemiş.</p>
+        <a href="admin.html" class="inline-block text-xs text-pink-400 hover:underline">
+          Yönetici panelinden fotoğraf yükleyin →
+        </a>
+      </div>
+
+      <!-- 15 Fotoğraf Puanlama Listesi -->
+      <div id="photos-rating-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Dinamik olarak dolar -->
+      </div>
+
+      <!-- Alt Kaydet Butonu -->
+      <div id="rating-bottom-bar" class="flex justify-center pt-4">
+        <button onclick="app.saveRatingAndShowList()" class="btn-primary text-sm px-8 py-2.5 shadow-lg shadow-pink-500/20">
+          <i class="fa-solid fa-check mr-1.5"></i> Puanları Kaydet & Sonuçları Gör
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. PUAN LİSTESİ / SONUÇLAR EKRANI -->
+    <section id="view-results" class="hidden space-y-6 animate-fade-in">
+      
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-900">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 id="results-page-title" class="text-xl font-bold text-white">Big5 Puan Listesi</h2>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> İlk 5 Vurgulu
+            </span>
+          </div>
+          <span id="results-round-info" class="text-xs text-slate-400">1 Tur Tamamlandı</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button onclick="app.startNewRound()" class="btn-primary text-xs py-2 px-3">
+            <i class="fa-solid fa-plus-circle"></i> Üzerine Puan Ekle (Yeni Tur)
+          </button>
+          <button onclick="app.editLatestRound()" class="btn-secondary text-xs py-2 px-3">
+            <i class="fa-solid fa-pen"></i> Puanları Düzenle
+          </button>
+        </div>
+      </div>
+
+      <!-- Puan Tablosu -->
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl overflow-hidden">
+        <table class="w-full text-left text-xs sm:text-sm text-slate-300">
+          <thead class="bg-slate-950 text-slate-400 text-xs uppercase font-semibold">
+            <tr>
+              <th class="px-4 py-3 w-12 text-center">#</th>
+              <th class="px-4 py-3 w-16">Fotoğraf</th>
+              <th class="px-4 py-3">İsim</th>
+              <th class="px-4 py-3 text-center">Son Tur</th>
+              <th class="px-4 py-3 text-center">Toplam</th>
+              <th class="px-4 py-3 text-center">Ortalama (15 Üzerinden)</th>
+            </tr>
+          </thead>
+          <tbody id="results-table-body" class="divide-y divide-slate-800/50">
+            <!-- Dinamik satırlar -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Alt Aksiyonlar -->
+      <div class="flex justify-between items-center text-xs text-slate-500 pt-2">
+        <button onclick="app.navigate('home')" class="hover:text-slate-300 transition">
+          <i class="fa-solid fa-arrow-left mr-1"></i> Başka Kategori Seç
+        </button>
+        <button onclick="window.print()" class="hover:text-slate-300 transition">
+          <i class="fa-solid fa-print mr-1"></i> Yazdır
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Fotoğraf Büyütme Modalı -->
+  <div id="image-modal" class="fixed inset-0 z-50 bg-black/90 hidden items-center justify-center p-4" onclick="app.closeImageModal()">
+    <div class="relative max-w-2xl" onclick="event.stopPropagation()">
+      <button onclick="app.closeImageModal()" class="absolute -top-10 right-0 text-white text-2xl">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <img id="modal-img" src="" alt="Fotoğraf" class="max-h-[80vh] rounded-xl object-contain border border-slate-700">
+      <div id="modal-caption" class="text-center text-slate-300 text-xs mt-2 font-medium"></div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
