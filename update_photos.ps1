@@ -1,3 +1,4 @@
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Drawing
 
 function Convert-ImageToBase64($filePath) {
@@ -41,19 +42,19 @@ function Convert-ImageToBase64($filePath) {
 $kizlarFolder = Join-Path $PSScriptRoot "kizlar"
 $erkeklerFolder = Join-Path $PSScriptRoot "erkekler"
 
-$kizlarFiles = Get-ChildItem -Path $kizlarFolder -File | Where-Object { $_.Extension -match '\.(jpg|jpeg|png|webp)$' }
-$erkeklerFiles = Get-ChildItem -Path $erkeklerFolder -File | Where-Object { $_.Extension -match '\.(jpg|jpeg|png|webp)$' }
+$kizlarFiles = Get-ChildItem -Path $kizlarFolder -File | Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|webp)$' -and $_.Name -notmatch '^desktop\.ini$' } | Sort-Object Name
+$erkeklerFiles = Get-ChildItem -Path $erkeklerFolder -File | Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|webp)$' -and $_.Name -notmatch '^desktop\.ini$' } | Sort-Object Name
 
-Write-Host "Kizlar klasorunde $($kizlarFiles.Count) fotograf bulundu." -ForegroundColor Cyan
-Write-Host "Erkekler klasorunde $($erkeklerFiles.Count) fotograf bulundu." -ForegroundColor Cyan
+Write-Host "Kizlar: $($kizlarFiles.Count) fotograf" -ForegroundColor Cyan
+Write-Host "Erkekler: $($erkeklerFiles.Count) fotograf" -ForegroundColor Cyan
 
 $kizlarList = @()
 $idx = 1
 foreach ($f in $kizlarFiles) {
     if ($idx -gt 15) { break }
-    Write-Host "Kiz #$idx isleniyor: $($f.Name)"
-    $b64 = Convert-ImageToBase64 $f.FullName
     $name = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+    Write-Host "Kiz #$idx : $name"
+    $b64 = Convert-ImageToBase64 $f.FullName
     $kizlarList += @{
         slot = $idx
         name = $name
@@ -66,9 +67,9 @@ $erkeklerList = @()
 $idx = 1
 foreach ($f in $erkeklerFiles) {
     if ($idx -gt 15) { break }
-    Write-Host "Erkek #$idx isleniyor: $($f.Name)"
-    $b64 = Convert-ImageToBase64 $f.FullName
     $name = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+    Write-Host "Erkek #$idx : $name"
+    $b64 = Convert-ImageToBase64 $f.FullName
     $erkeklerList += @{
         slot = $idx
         name = $name
@@ -86,12 +87,12 @@ $json = $sharedObj | ConvertTo-Json -Depth 5
 $jsContent = "/**`n * Big5 Genel Fotograf Verisi`n * Guncellenme: $(Get-Date -Format 'dd.MM.yyyy HH:mm:ss')`n */`nwindow.BIG5_SHARED_DATA = $json;`n"
 
 $outPath = Join-Path $PSScriptRoot "photos.js"
-[System.IO.File]::WriteAllText($outPath, $jsContent, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText($outPath, $jsContent, (New-Object System.Text.UTF8Encoding($false)))
 
-Write-Host "photos.js basariyla olusturuldu!" -ForegroundColor Green
+Write-Host "photos.js UTF-8 basariyla olusturuldu!" -ForegroundColor Green
 
 & "C:\Program Files\Git\cmd\git.exe" add photos.js
-& "C:\Program Files\Git\cmd\git.exe" commit -m "Update photos from folders"
+& "C:\Program Files\Git\cmd\git.exe" commit -m "Update clean candidate names with UTF-8"
 & "C:\Program Files\Git\cmd\git.exe" push origin main
 
-Write-Host "Fotograflar GitHub'a gonderildi ve yayina alindi!" -ForegroundColor Green
+Write-Host "GitHub guncellemesi tamamlandi!" -ForegroundColor Green

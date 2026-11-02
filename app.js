@@ -51,6 +51,7 @@ class Big5App {
     this.categoryData = null;
     this.currentRound = 1;
     this.tempScores = new Array(15).fill(null);
+    this.mvpIndex = null; // Seçilen MVP fotoğrafının index'i
   }
 
   async init() {
@@ -186,11 +187,14 @@ class Big5App {
       if (!photo.dataUrl) return; // Yüklenmemişse gösterme
 
       const currentScore = this.tempScores[idx];
+      const isMvp = this.mvpIndex === idx;
       const card = document.createElement('div');
       card.className = `p-3 rounded-2xl border transition-all ${
-        currentScore !== null 
-          ? 'bg-slate-900 border-pink-500/40 shadow-sm' 
-          : 'bg-slate-900/60 border-slate-800'
+        isMvp
+          ? 'bg-amber-950/20 border-amber-500/60 shadow-md shadow-amber-500/10'
+          : currentScore !== null 
+            ? 'bg-slate-900 border-pink-500/40 shadow-sm' 
+            : 'bg-slate-900/60 border-slate-800'
       }`;
 
       // 0'dan 15'e kadar puan hapları
@@ -209,17 +213,24 @@ class Big5App {
         `;
       }
 
+      const scoreDisplay = currentScore !== null
+        ? (isMvp ? `${currentScore + 1} <span class="text-xs text-amber-300 font-semibold">(+1 MVP)</span>` : `${currentScore} / 15`)
+        : (isMvp ? `<span class="text-xs text-amber-300 font-semibold">+1 MVP</span>` : '—');
+
       card.innerHTML = `
         <div class="flex items-center gap-3 mb-2.5">
-          <div class="w-14 h-16 rounded-xl overflow-hidden bg-slate-950 flex-shrink-0 cursor-pointer border border-slate-700"
+          <div class="w-14 h-16 rounded-xl overflow-hidden bg-slate-950 flex-shrink-0 cursor-pointer border ${isMvp ? 'border-amber-400 ring-2 ring-amber-400/30' : 'border-slate-700'}"
                onclick="app.openImageModal('${photo.dataUrl}', '${photo.name}')">
             <img src="${photo.dataUrl}" alt="${photo.name}" class="w-full h-full object-cover">
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between">
-              <h4 class="font-bold text-white text-sm truncate">${photo.name}</h4>
-              <span id="score-val-${idx}" class="text-sm font-extrabold ${currentScore !== null ? 'text-pink-400' : 'text-slate-600'}">
-                ${currentScore !== null ? currentScore + ' / 15' : '—'}
+              <div class="flex items-center gap-1.5 truncate">
+                <h4 class="font-bold text-white text-sm truncate">${photo.name}</h4>
+                ${isMvp ? '<span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-300 font-extrabold border border-amber-400/50">⭐ MVP</span>' : ''}
+              </div>
+              <span id="score-val-${idx}" class="text-sm font-extrabold ${isMvp ? 'text-amber-400' : currentScore !== null ? 'text-pink-400' : 'text-slate-600'}">
+                ${scoreDisplay}
               </span>
             </div>
             ${photo.scores && photo.scores.length > 0 ? `
@@ -231,6 +242,19 @@ class Big5App {
         <!-- 0-15 Puan Butonları -->
         <div class="grid grid-cols-8 gap-1 pt-1 border-t border-slate-800/60">
           ${pillsHtml}
+        </div>
+
+        <!-- MVP Seçim Butonu -->
+        <div class="mt-2 pt-2 border-t border-slate-800/40">
+          <button onclick="app.setMvp(${idx})"
+                  class="w-full py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                    isMvp
+                      ? 'bg-amber-500/25 border-amber-400 text-amber-300 shadow-sm shadow-amber-500/30 ring-1 ring-amber-400/40'
+                      : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:border-amber-500/40 hover:text-amber-300'
+                  }">
+            <i class="fa-${isMvp ? 'solid' : 'regular'} fa-star text-amber-400"></i>
+            ${isMvp ? 'Turun MVP\'si Seçildi (+1 Puan Eklendi)' : 'Bu Turun MVP\'si Olarak Seç (+1 Puan)'}
+          </button>
         </div>
       `;
 
@@ -249,6 +273,19 @@ class Big5App {
       el.className = 'text-sm font-extrabold text-pink-400';
     }
 
+    this.renderRatingPhotos();
+  }
+
+  setMvp(idx) {
+    // Aynıya tekrar basılırsa MVP seçimini kaldır
+    if (this.mvpIndex === idx) {
+      this.mvpIndex = null;
+      this.showToast('MVP seçimi kaldırıldı.');
+    } else {
+      this.mvpIndex = idx;
+      const name = this.categoryData.photos[idx]?.name || '';
+      this.showToast(`⭐ ${name} MVP seçildi! (+1 bonus puan)`);
+    }
     this.renderRatingPhotos();
   }
 
@@ -282,7 +319,14 @@ class Big5App {
     this.categoryData.photos.forEach((photo, idx) => {
       if (!photo.dataUrl) return;
       if (!photo.scores) photo.scores = [];
-      const score = this.tempScores[idx] !== null ? this.tempScores[idx] : 0;
+      if (!photo.mvpCount) photo.mvpCount = 0;
+      let score = this.tempScores[idx] !== null ? this.tempScores[idx] : 0;
+
+      // MVP bonusu: +1 puan
+      if (idx === this.mvpIndex) {
+        score = score + 1;
+        photo.mvpCount = (photo.mvpCount || 0) + 1;
+      }
 
       if (isNew) {
         photo.scores.push(score);
@@ -299,7 +343,12 @@ class Big5App {
     this.categoryData.lastUpdated = new Date().toISOString();
     await Database.saveCategory(this.categoryData);
 
-    this.showToast(`${this.currentRound}. Tur puanları kaydedildi.`);
+    const mvpName = this.mvpIndex !== null ? this.categoryData.photos[this.mvpIndex]?.name : null;
+    const mvpMsg = mvpName ? ` • ⭐ MVP: ${mvpName}` : '';
+    this.showToast(`${this.currentRound}. Tur kaydedildi${mvpMsg}`);
+
+    // MVP sıfırla (bir sonraki tur için)
+    this.mvpIndex = null;
     this.showResults();
   }
 
@@ -324,14 +373,16 @@ class Big5App {
         const total = scores.reduce((sum, s) => sum + s, 0);
         const avg = scores.length > 0 ? (total / scores.length) : 0;
         const last = scores.length > 0 ? scores[scores.length - 1] : 0;
+        const mvpCount = p.mvpCount || 0;
         return {
           ...p,
           total,
           avg: parseFloat(avg.toFixed(2)),
-          last
+          last,
+          mvpCount
         };
       })
-      .sort((a, b) => b.avg - a.avg);
+      .sort((a, b) => b.avg - a.avg || b.mvpCount - a.mvpCount);
 
     list.forEach((photo, idx) => {
       const rank = idx + 1;
@@ -349,6 +400,10 @@ class Big5App {
         ? `<span class="inline-flex items-center justify-center w-6 h-6 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-extrabold text-xs">${rank}</span>`
         : `<span class="font-bold text-slate-400">${rank}</span>`;
 
+      const mvpBadge = photo.mvpCount > 0
+        ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 flex items-center gap-0.5">⭐ MVP ×${photo.mvpCount}</span>`
+        : '';
+
       tr.innerHTML = `
         <td class="px-4 py-2.5 text-center">${rankHtml}</td>
         <td class="px-4 py-2.5">
@@ -358,9 +413,10 @@ class Big5App {
           </div>
         </td>
         <td class="px-4 py-2.5 font-semibold text-white">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <span>${photo.name}</span>
             ${isTop5 ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">İlk 5</span>' : ''}
+            ${mvpBadge}
           </div>
           <span class="text-[10px] text-slate-400 font-normal">[${photo.scores.join(', ')}]</span>
         </td>
@@ -383,12 +439,14 @@ class Big5App {
     const nextRound = (this.categoryData.roundsCount || 0) + 1;
     this.currentRound = nextRound;
     this.tempScores = new Array(15).fill(null);
+    this.mvpIndex = null;
     this.showRating();
     this.showToast(`${nextRound}. Tur başlatıldı. Yeniden puanlayabilirsiniz.`);
   }
 
   editLatestRound() {
     this.currentRound = this.categoryData.roundsCount || 1;
+    this.mvpIndex = null;
     this.initTempScores(true);
     this.showRating();
   }
@@ -408,6 +466,7 @@ class Big5App {
     try {
       this.categoryData.photos.forEach(p => {
         p.scores = [];
+        p.mvpCount = 0;
       });
       this.categoryData.roundsCount = 0;
       this.categoryData.lastUpdated = new Date().toISOString();
@@ -415,6 +474,7 @@ class Big5App {
 
       this.currentRound = 1;
       this.tempScores = new Array(15).fill(null);
+      this.mvpIndex = null;
       this.initTempScores(false);
 
       // Sonuçlar ve puanlama ekranlarını gizle, puanlama ekranını göster
