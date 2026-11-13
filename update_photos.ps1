@@ -1,4 +1,4 @@
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Drawing
 
 function Convert-ImageToBase64($filePath) {
@@ -51,7 +51,6 @@ Write-Host "Erkekler: $($erkeklerFiles.Count) fotograf" -ForegroundColor Cyan
 $kizlarList = @()
 $idx = 1
 foreach ($f in $kizlarFiles) {
-    if ($idx -gt 15) { break }
     $name = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
     Write-Host "Kiz #$idx : $name"
     $b64 = Convert-ImageToBase64 $f.FullName
@@ -66,7 +65,6 @@ foreach ($f in $kizlarFiles) {
 $erkeklerList = @()
 $idx = 1
 foreach ($f in $erkeklerFiles) {
-    if ($idx -gt 15) { break }
     $name = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
     Write-Host "Erkek #$idx : $name"
     $b64 = Convert-ImageToBase64 $f.FullName
@@ -96,3 +94,4 @@ Write-Host "photos.js UTF-8 basariyla olusturuldu!" -ForegroundColor Green
 & "C:\Program Files\Git\cmd\git.exe" push origin main
 
 Write-Host "GitHub guncellemesi tamamlandi!" -ForegroundColor Green
+

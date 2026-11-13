@@ -50,7 +50,7 @@
           </div>
           <div>
             <h2 class="text-lg font-bold text-white group-hover:text-pink-400 transition">Big5 Kızlar</h2>
-            <span id="home-kizlar-status" class="text-xs text-slate-500">15 Fotoğraf</span>
+            <span id="home-kizlar-status" class="text-xs text-slate-500">16 Fotoğraf</span>
           </div>
         </button>
 
@@ -62,7 +62,7 @@
           </div>
           <div>
             <h2 class="text-lg font-bold text-white group-hover:text-indigo-400 transition">Big5 Erkekler</h2>
-            <span id="home-erkekler-status" class="text-xs text-slate-500">15 Fotoğraf</span>
+            <span id="home-erkekler-status" class="text-xs text-slate-500">16 Fotoğraf</span>
           </div>
         </button>
       </div>
@@ -74,17 +74,23 @@
       <!-- Başlık ve Durum -->
       <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-900">
         <div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <h2 id="category-page-title" class="text-xl font-bold text-white">Big5 Kızlar Puanlama</h2>
             <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold flex items-center gap-1">
-              <i class="fa-solid fa-star text-[9px] text-amber-400"></i> 1 MVP Seçimi (+1 Puan)
+              <i class="fa-solid fa-star text-[9px] text-amber-400"></i> 1 MVP (+1)
+            </span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 font-semibold flex items-center gap-1">
+              <i class="fa-solid fa-ban text-[9px] text-rose-400"></i> 1 Big No (-1)
+            </span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold flex items-center gap-1">
+              <span class="font-extrabold text-rose-400">E</span> = 0 Puan
             </span>
           </div>
           <span id="round-indicator" class="text-xs text-pink-400 font-semibold">1. Tur</span>
         </div>
 
         <div class="flex items-center gap-2">
-          <span id="progress-indicator" class="text-xs font-bold text-slate-400">0 / 15 Puanlandı</span>
+          <span id="progress-indicator" class="text-xs font-bold text-slate-400">0 / 16 Puanlandı</span>
           <button id="btn-show-results-top" onclick="app.showResults()" class="hidden text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
             Sonuçlar
           </button>
@@ -102,7 +108,7 @@
         </a>
       </div>
 
-      <!-- 15 Fotoğraf Puanlama Listesi -->
+      <!-- Aday Fotoğrafları Puanlama Listesi -->
       <div id="photos-rating-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <!-- Dinamik olarak dolar -->
       </div>
@@ -191,6 +197,6 @@
   <script>
     document.write('<script src="photos.js?t=' + Date.now() + '"><\/script>');
   </script>
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

@@ -62,7 +62,7 @@ class AdminPanel {
         data = {
           id: catId,
           name: catId === 'kizlar' ? 'Kızlar' : 'Erkekler',
-          photos: Array.from({ length: 15 }, (_, i) => ({
+          photos: Array.from({ length: 16 }, (_, i) => ({
             id: `${catId}_photo_${i + 1}`,
             slot: i + 1,
             name: `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${i + 1}`,
@@ -73,8 +73,42 @@ class AdminPanel {
           lastUpdated: new Date().toISOString()
         };
         await Database.saveCategory(data);
+      } else {
+        // En az 16 slot olmasını sağla (1 yeni slot ekleme)
+        let updated = false;
+        while (data.photos.length < 16) {
+          const newSlot = data.photos.length + 1;
+          data.photos.push({
+            id: `${catId}_photo_${newSlot}`,
+            slot: newSlot,
+            name: `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${newSlot}`,
+            dataUrl: null,
+            scores: []
+          });
+          updated = true;
+        }
+        if (updated) {
+          await Database.saveCategory(data);
+        }
       }
     }
+  }
+
+  async addNewSlot() {
+    if (!this.categoryData) return;
+    const catId = this.currentCategory;
+    const newSlot = this.categoryData.photos.length + 1;
+    this.categoryData.photos.push({
+      id: `${catId}_photo_${newSlot}`,
+      slot: newSlot,
+      name: `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${newSlot}`,
+      dataUrl: null,
+      scores: []
+    });
+    await Database.saveCategory(this.categoryData);
+    await this.updateCounts();
+    this.renderGrid();
+    this.showToast(`Yeni aday slotu (#${newSlot}) eklendi.`);
   }
 
   async updateCounts() {
@@ -82,11 +116,13 @@ class AdminPanel {
     const erkeklerData = await Database.getCategory('erkekler');
     const kizlarCount = kizlarData ? kizlarData.photos.filter(p => !!p.dataUrl).length : 0;
     const erkeklerCount = erkeklerData ? erkeklerData.photos.filter(p => !!p.dataUrl).length : 0;
+    const kizlarTotal = kizlarData ? kizlarData.photos.length : 16;
+    const erkeklerTotal = erkeklerData ? erkeklerData.photos.length : 16;
 
     const elKizlar = document.getElementById('count-kizlar');
     const elErkekler = document.getElementById('count-erkekler');
-    if (elKizlar) elKizlar.textContent = `${kizlarCount}/15`;
-    if (elErkekler) elErkekler.textContent = `${erkeklerCount}/15`;
+    if (elKizlar) elKizlar.textContent = `${kizlarCount}/${kizlarTotal}`;
+    if (elErkekler) elErkekler.textContent = `${erkeklerCount}/${erkeklerTotal}`;
   }
 
   async switchCategory(catId) {
@@ -98,14 +134,16 @@ class AdminPanel {
     const tabErkekler = document.getElementById('admin-tab-erkekler');
     const title = document.getElementById('active-category-title');
 
+    const totalSlots = this.categoryData ? this.categoryData.photos.length : 16;
+
     if (isGirls) {
       tabKizlar.className = 'flex-1 py-2 rounded-xl text-xs font-bold transition text-white bg-pink-600 shadow-md';
       tabErkekler.className = 'flex-1 py-2 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white';
-      title.textContent = 'Big5 Kızlar (15 Fotoğraf)';
+      title.textContent = `Big5 Kızlar (${totalSlots} Aday Slotu)`;
     } else {
       tabErkekler.className = 'flex-1 py-2 rounded-xl text-xs font-bold transition text-white bg-indigo-600 shadow-md';
       tabKizlar.className = 'flex-1 py-2 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white';
-      title.textContent = 'Big5 Erkekler (15 Fotoğraf)';
+      title.textContent = `Big5 Erkekler (${totalSlots} Aday Slotu)`;
     }
 
     await this.updateCounts();
@@ -196,7 +234,8 @@ class AdminPanel {
     const files = Array.from(event.target.files);
     if (!files || files.length === 0) return;
 
-    for (let i = 0; i < files.length && i < 15; i++) {
+    const totalSlots = this.categoryData.photos.length;
+    for (let i = 0; i < files.length && i < totalSlots; i++) {
       const dataUrl = await this.readFile(files[i]);
       this.categoryData.photos[i].dataUrl = dataUrl;
       const cleanName = files[i].name.replace(/\.[^/.]+$/, "").substring(0, 20);
@@ -206,7 +245,7 @@ class AdminPanel {
     await Database.saveCategory(this.categoryData);
     await this.updateCounts();
     this.renderGrid();
-    this.showToast(`${Math.min(files.length, 15)} fotoğraf yüklendi.`);
+    this.showToast(`${Math.min(files.length, totalSlots)} fotoğraf yüklendi.`);
     event.target.value = '';
   }
 
