@@ -4,11 +4,11 @@
  * Özellikler:
  * - Aday Ekleme / Fotoğraf Düzenleme
  * - Yapılan değişikliklerin anında merkezi veritabanına (CloudSync) senkronize edilmesi
- * - Cihazlar arası otomatik ortak veri aktarımı
+ * - Cihazlar arası otomatik ortak veri ve fotoğraf aktarımı
  */
 
 const DB_NAME = 'Big5_PhotoRatingDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = 'categories';
 
 class Database {
@@ -57,42 +57,61 @@ class CloudSync {
     return window.BIG5_CONFIG ? window.BIG5_CONFIG.cloud : { enabled: false };
   }
 
-  static getEndpoint(catId) {
+  static async fetchCategory(catId) {
     const cfg = this.getConfig();
     if (!cfg || !cfg.enabled) return null;
-    if (cfg.provider === 'firebase_rtdb' && cfg.firebaseUrl) {
-      const base = cfg.firebaseUrl.replace(/\/+$/, '');
-      return `${base}/big5/categories/${catId}.json`;
-    }
-    if (cfg.customApiUrl) {
-      const base = cfg.customApiUrl.replace(/\/+$/, '');
-      return `${base}/categories/${catId}`;
-    }
-    return null;
-  }
 
-  static async fetchCategory(catId) {
-    const endpoint = this.getEndpoint(catId);
-    if (!endpoint) return null;
     try {
-      const res = await fetch(endpoint, { cache: 'no-cache' });
-      if (!res.ok) return null;
-      return await res.json();
+      if (cfg.provider === 'firebase' && cfg.firebaseUrl) {
+        const url = `${cfg.firebaseUrl.replace(/\/+$/, '')}/big5/categories/${catId}.json`;
+        const res = await fetch(url, { cache: 'no-cache' });
+        if (!res.ok) return null;
+        return await res.json();
+      }
+
+      const endpoint = cfg.endpoints ? cfg.endpoints[catId] : null;
+      if (endpoint) {
+        const res = await fetch(endpoint, { cache: 'no-cache' });
+        if (!res.ok) return null;
+        const result = await res.json();
+        return result.data || null;
+      }
+      return null;
     } catch (e) {
       return null;
     }
   }
 
   static async pushCategory(categoryData) {
-    const endpoint = this.getEndpoint(categoryData.id);
-    if (!endpoint) return false;
+    const cfg = this.getConfig();
+    if (!cfg || !cfg.enabled) return false;
+
     try {
-      const res = await fetch(endpoint, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(categoryData)
-      });
-      return res.ok;
+      const catId = categoryData.id;
+      if (cfg.provider === 'firebase' && cfg.firebaseUrl) {
+        const url = `${cfg.firebaseUrl.replace(/\/+$/, '')}/big5/categories/${catId}.json`;
+        const res = await fetch(url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(categoryData)
+        });
+        return res.ok;
+      }
+
+      const endpoint = cfg.endpoints ? cfg.endpoints[catId] : null;
+      if (endpoint) {
+        const payload = {
+          name: `big5_${catId}_live_data`,
+          data: categoryData
+        };
+        const res = await fetch(endpoint, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        return res.ok;
+      }
+      return false;
     } catch (e) {
       return false;
     }
@@ -114,19 +133,27 @@ class AdminPanel {
     for (const catId of ['kizlar', 'erkekler']) {
       let data = await Database.getCategory(catId);
       const cloudData = await CloudSync.fetchCategory(catId);
+      const sharedList = (window.BIG5_SHARED_DATA && window.BIG5_SHARED_DATA[catId]) ? window.BIG5_SHARED_DATA[catId] : [];
 
       if (cloudData && cloudData.photos && cloudData.photos.length > 0) {
         data = cloudData;
+        // Eksik fotoğrafları photos.js'ten tamamla
+        data.photos.forEach((p, i) => {
+          if (!p.dataUrl && sharedList[i] && sharedList[i].dataUrl) {
+            p.dataUrl = sharedList[i].dataUrl;
+          }
+        });
         await Database.saveCategory(data);
       } else if (!data) {
+        const targetCount = Math.max(16, sharedList.length);
         data = {
           id: catId,
           name: catId === 'kizlar' ? 'Kızlar' : 'Erkekler',
-          photos: Array.from({ length: 16 }, (_, i) => ({
+          photos: Array.from({ length: targetCount }, (_, i) => ({
             id: `${catId}_photo_${i + 1}`,
             slot: i + 1,
-            name: `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${i + 1}`,
-            dataUrl: null,
+            name: (sharedList[i] && sharedList[i].name) ? sharedList[i].name : `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${i + 1}`,
+            dataUrl: (sharedList[i] && sharedList[i].dataUrl) ? sharedList[i].dataUrl : null,
             scores: [],
             mvpCount: 0,
             bigNoCount: 0
@@ -161,7 +188,7 @@ class AdminPanel {
   }
 
   /**
-   * 3. Yeni Kişi Ekleme (Tüm Cihazlara Anında Yansır)
+   * 2 & 3. Yeni Kişi Ekleme (Merkezi Buluta Yazılır ve Tüm Cihazlarda Görünür)
    */
   async addNewSlot() {
     if (!this.categoryData) return;
@@ -301,6 +328,7 @@ class AdminPanel {
     const file = event.target.files[0];
     if (!file) return;
 
+    this.showToast('Fotoğraf optimize ediliyor ve buluta yükleniyor...');
     const dataUrl = await this.readFile(file);
     this.categoryData.photos[idx].dataUrl = dataUrl;
     const cleanName = file.name.replace(/\.[^/.]+$/, "").substring(0, 20);
@@ -312,13 +340,14 @@ class AdminPanel {
 
     await this.updateCounts();
     this.renderGrid();
-    this.showToast(`#${idx + 1} nolu fotoğraf yüklendi ve buluta senkronize edildi.`);
+    this.showToast(`#${idx + 1} nolu fotoğraf kaydedildi ve tüm cihazlara eşitlendi!`);
   }
 
   async handleBulkUpload(event) {
     const files = Array.from(event.target.files);
     if (!files || files.length === 0) return;
 
+    this.showToast('Fotoğraflar işleniyor ve buluta aktarılıyor...');
     const totalSlots = this.categoryData.photos.length;
     for (let i = 0; i < files.length && i < totalSlots; i++) {
       const dataUrl = await this.readFile(files[i]);
@@ -333,7 +362,7 @@ class AdminPanel {
 
     await this.updateCounts();
     this.renderGrid();
-    this.showToast(`${Math.min(files.length, totalSlots)} fotoğraf yüklendi ve senkronize edildi.`);
+    this.showToast(`${Math.min(files.length, totalSlots)} fotoğraf yüklendi ve tüm cihazlara eşitlendi.`);
     event.target.value = '';
   }
 
@@ -348,7 +377,7 @@ class AdminPanel {
 
     await this.updateCounts();
     this.renderGrid();
-    this.showToast('Fotoğraf silindi.');
+    this.showToast('Fotoğraf silindi ve tüm cihazlara eşitlendi.');
   }
 
   async updatePhotoName(idx, name) {
@@ -376,7 +405,7 @@ class AdminPanel {
 
     await this.updateCounts();
     this.renderGrid();
-    this.showToast('Kategori temizlendi ve buluta aktarıldı.');
+    this.showToast('Kategori temizlendi ve tüm cihazlara eşitlendi.');
   }
 
   async loadSamplePhotos() {
@@ -426,7 +455,7 @@ class AdminPanel {
       const name = names[i] || `Aday ${i + 1}`;
       ctx.fillText(name, 200, 465);
 
-      this.categoryData.photos[i].dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      this.categoryData.photos[i].dataUrl = canvas.toDataURL('image/jpeg', 0.85);
       this.categoryData.photos[i].name = name;
     }
 
@@ -495,6 +524,7 @@ window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
     this.showToast('photos.js indirildi! Klasöre kopyalayıp GitHuba_Yukle.bat ile GitHub\'a gönderin.');
   }
 
+  // Fotoğrafları otomatik optimize et (Maksimum 500px, %78 kalite ile buluta hızlı ve hafif aktarım)
   readFile(file) {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -503,7 +533,7 @@ window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
         img.onload = () => {
           let width = img.width;
           let height = img.height;
-          const maxDim = 800;
+          const maxDim = 500;
 
           if (width > maxDim || height > maxDim) {
             if (width > height) {
@@ -520,7 +550,7 @@ window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.82));
+          resolve(canvas.toDataURL('image/jpeg', 0.78));
         };
         img.src = e.target.result;
       };

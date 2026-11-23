@@ -1,34 +1,37 @@
 /**
  * Big5 - Merkezi Yapılandırma ve Bulut Senkronizasyon Ayarları
  * 
- * Bu dosya cihazlar arası ortak/kalıcı veri senkronizasyonunu ve
- * global sıfırlama (Global Reset) sürümünü yönetir.
+ * Bu dosya:
+ * 1. Puanların tüm cihazlarda aynı ve kalıcı olmasını,
+ * 2. Yeni eklenen kişilerin ve fotoğrafların diğer tüm cihazlara anında yansımasını sağlar.
  */
 
 window.BIG5_CONFIG = {
   // Global Sıfırlama Sürümü:
-  // Bu sürüm değiştiğinde tüm cihaz ve tarayıcılardaki eski yerel puanlar
-  // otomatik olarak sıfırlanır ve herkes sıfırdan başlar.
-  GLOBAL_DATA_VERSION: 'v2_global_reset_20261123',
+  // Bu sürüm değiştikçe eski yerel önbellekler otomatik sıfırlanır.
+  GLOBAL_DATA_VERSION: 'v3_global_reset_20261123_live',
 
-  // Merkezi Veritabanı / Bulut Senkronizasyon Ayarları:
-  // Cihazlar arası puanların ve yeni kişilerin canlı senkronize olması için
-  // Firebase Realtime Database veya uyumlu bir REST API kullanılır.
+  // Merkezi Veritabanı (Backend) Ayarları
   cloud: {
-    // Bulut senkronizasyonu aktif mi? (true: cihazlar arası ortak, false: sadece yerel)
     enabled: true,
 
-    // Sağlayıcı tipi: 'firebase_rtdb' veya 'custom_rest'
-    // Firebase Realtime Database en basit, ücretsiz ve sunucusuz çözümdür.
-    provider: 'firebase_rtdb',
+    // 'rest_api' (Anında hazır, kurulumsuz) veya 'firebase' (Kendi Firebase projeniz)
+    provider: 'rest_api',
 
-    // Firebase Realtime Database URL'niz:
-    // Örnek: https://proje-adiniz-default-rtdb.firebaseio.com
-    // (Firebase Console -> Realtime Database -> Data sekmesindeki URL)
-    firebaseUrl: 'https://big5-rating-sync-default-rtdb.firebaseio.com',
+    // Canlı Merkezi REST Uç Noktaları (Cihazlar arası anında senkronize):
+    endpoints: {
+      kizlar: 'https://api.restful-api.dev/objects/ff808181a09d98f701a2085d5798265a',
+      erkekler: 'https://api.restful-api.dev/objects/ff808181a09d98f701a2085d8655265c'
+    },
 
-    // Özel bir REST API kullanmak isterseniz (Opsiyonel):
-    // Örnek: https://api.prensesperver.com/big5
-    customApiUrl: ''
+    // Kendi Firebase Realtime Database projenizi bağlamak isterseniz (Opsiyonel):
+    // Örnek: 'https://proje-adiniz-default-rtdb.firebaseio.com'
+    firebaseUrl: '',
+
+    // Kendi Supabase projenizi bağlamak isterseniz (Opsiyonel):
+    supabase: {
+      url: '',
+      anonKey: ''
+    }
   }
 };

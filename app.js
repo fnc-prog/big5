@@ -3,16 +3,15 @@
  * Big5 Kızlar & Big5 Erkekler 15 Puan Değerlendirme & Çoklu Tur Sistemi
  * 
  * Özellikler:
- * - Merkezi Bulut Senkronizasyonu (Cihazlar ve Tarayıcılar Arası Ortak Veri & Kalıcı Puanlama)
- * - Global Puan Sıfırlama (Tüm cihazlarda eski puanları temizleme)
+ * - Merkezi Bulut Senkronizasyonu (Tüm cihazlar ve tarayıcılarda kalıcı ve ortak veri)
+ * - Yeni Kişi & Fotoğraf Senkronizasyonu (Eklenen adaylar ve fotoğraflar tüm cihazlarda görünür)
+ * - Global Puan Sıfırlama (Her cihazda eski puanları otomatik temizleme)
  * - 0-15 Puanlama + 'E' Harfi (0 Puan) + 'Y' Harfi (0 Puan)
- * - MVP Seçimi: Tur başına 1 adaya +1 bonus puan (⭐)
- * - Big No Seçimi: Tur başına 1 adaya -1 ceza puanı (🚫, MVP'nin tam tersi)
- * - Dinamik Aday Sistemi (Yeni kişi eklendiğinde tüm cihazlara anında yansıma)
+ * - MVP (+1) ve Big No (-1) Seçimleri
  */
 
 const DB_NAME = 'Big5_PhotoRatingDB';
-const DB_VERSION = 2; // Sürüm artırılarak eski yerel şema güncellendi
+const DB_VERSION = 3;
 const STORE_NAME = 'categories';
 
 class Database {
@@ -61,67 +60,95 @@ class CloudSync {
     return window.BIG5_CONFIG ? window.BIG5_CONFIG.cloud : { enabled: false };
   }
 
-  static getEndpoint(catId) {
-    const cfg = this.getConfig();
-    if (!cfg || !cfg.enabled) return null;
-    if (cfg.provider === 'firebase_rtdb' && cfg.firebaseUrl) {
-      const base = cfg.firebaseUrl.replace(/\/+$/, '');
-      return `${base}/big5/categories/${catId}.json`;
-    }
-    if (cfg.customApiUrl) {
-      const base = cfg.customApiUrl.replace(/\/+$/, '');
-      return `${base}/categories/${catId}`;
-    }
-    return null;
-  }
-
   static updateStatusIndicator(status) {
     const el = document.getElementById('cloud-sync-status');
     if (!el) return;
     if (status === 'syncing') {
-      el.className = 'text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-medium flex items-center gap-1.5';
-      el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> Bulut Senkronize Ediliyor...';
+      el.className = 'hidden sm:flex text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-medium items-center gap-1.5';
+      el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> Bulut Eşitleniyor...';
     } else if (status === 'synced') {
-      el.className = 'text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium flex items-center gap-1.5';
-      el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Ortak Bulut Aktif';
+      el.className = 'hidden sm:flex text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium items-center gap-1.5';
+      el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Tüm Cihazlar Ortak (Canlı)';
     } else if (status === 'error' || status === 'offline') {
-      el.className = 'text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium flex items-center gap-1.5';
-      el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Yerel Mod';
+      el.className = 'hidden sm:flex text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium items-center gap-1.5';
+      el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Çevrimdışı (Yerel)';
     }
   }
 
   static async fetchCategory(catId) {
-    const endpoint = this.getEndpoint(catId);
-    if (!endpoint) return null;
+    const cfg = this.getConfig();
+    if (!cfg || !cfg.enabled) return null;
+
     try {
       this.updateStatusIndicator('syncing');
-      const res = await fetch(endpoint, { cache: 'no-cache' });
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-      const data = await res.json();
-      this.updateStatusIndicator('synced');
-      return data;
+
+      // 1. Firebase RTDB
+      if (cfg.provider === 'firebase' && cfg.firebaseUrl) {
+        const url = `${cfg.firebaseUrl.replace(/\/+$/, '')}/big5/categories/${catId}.json`;
+        const res = await fetch(url, { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        this.updateStatusIndicator('synced');
+        return data;
+      }
+
+      // 2. Canlı REST API
+      const endpoint = cfg.endpoints ? cfg.endpoints[catId] : null;
+      if (endpoint) {
+        const res = await fetch(endpoint, { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const result = await res.json();
+        this.updateStatusIndicator('synced');
+        return result.data || null;
+      }
+
+      return null;
     } catch (err) {
-      console.warn(`[CloudSync] ${catId} verisi buluttan çekilemedi, yerel veri kullanılacak:`, err);
+      console.warn(`[CloudSync] ${catId} buluttan çekilemedi:`, err);
       this.updateStatusIndicator('offline');
       return null;
     }
   }
 
   static async pushCategory(categoryData) {
-    const endpoint = this.getEndpoint(categoryData.id);
-    if (!endpoint) return false;
+    const cfg = this.getConfig();
+    if (!cfg || !cfg.enabled) return false;
+
     try {
       this.updateStatusIndicator('syncing');
-      const res = await fetch(endpoint, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(categoryData)
-      });
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-      this.updateStatusIndicator('synced');
-      return true;
+      const catId = categoryData.id;
+
+      // 1. Firebase RTDB
+      if (cfg.provider === 'firebase' && cfg.firebaseUrl) {
+        const url = `${cfg.firebaseUrl.replace(/\/+$/, '')}/big5/categories/${catId}.json`;
+        const res = await fetch(url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(categoryData)
+        });
+        this.updateStatusIndicator(res.ok ? 'synced' : 'error');
+        return res.ok;
+      }
+
+      // 2. Canlı REST API
+      const endpoint = cfg.endpoints ? cfg.endpoints[catId] : null;
+      if (endpoint) {
+        const payload = {
+          name: `big5_${catId}_live_data`,
+          data: categoryData
+        };
+        const res = await fetch(endpoint, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        this.updateStatusIndicator(res.ok ? 'synced' : 'error');
+        return res.ok;
+      }
+
+      return false;
     } catch (err) {
-      console.warn(`[CloudSync] ${categoryData.id} verisi buluta yazılamadı:`, err);
+      console.warn(`[CloudSync] ${categoryData.id} buluta kaydedilemedi:`, err);
       this.updateStatusIndicator('offline');
       return false;
     }
@@ -149,14 +176,13 @@ class Big5App {
 
   /**
    * 1. Tüm Mevcut Puanları Sıfırla (Global Reset)
-   * GLOBAL_DATA_VERSION değiştiğinde tüm cihazlarda eski puanları tamamen temizler.
    */
   async handleGlobalReset() {
-    const requiredVersion = window.BIG5_CONFIG ? window.BIG5_CONFIG.GLOBAL_DATA_VERSION : 'v2_global_reset_20261123';
+    const requiredVersion = window.BIG5_CONFIG ? window.BIG5_CONFIG.GLOBAL_DATA_VERSION : 'v3_global_reset_20261123_live';
     const currentVersion = localStorage.getItem('big5_global_reset_version');
 
     if (currentVersion !== requiredVersion) {
-      console.log('[Big5] Global sıfırlama uygulanıyor... Tüm eski puanlar sıfırlanıyor.');
+      console.log('[Big5] Global sıfırlama devrede... Tüm eski puanlar sıfırlanıyor.');
       for (const catId of ['kizlar', 'erkekler']) {
         let localData = await Database.getCategory(catId);
         if (localData && localData.photos) {
@@ -177,24 +203,32 @@ class Big5App {
   }
 
   /**
-   * 2 & 3. Kalıcı ve Cihazlar Arası Ortak Veri & Yeni Kişi Eklemenin Tüm Cihazlarda Görünmesi
+   * 2 & 3. Kalıcı ve Cihazlar Arası Ortak Veri & Yeni Kişi/Fotoğraf Senkronizasyonu
    */
   async ensureInitialData() {
     for (const catId of ['kizlar', 'erkekler']) {
       let localData = await Database.getCategory(catId);
       const sharedList = (window.BIG5_SHARED_DATA && window.BIG5_SHARED_DATA[catId]) ? window.BIG5_SHARED_DATA[catId] : [];
       
-      // Buluttan merkezi veriyi çekmeyi dene
+      // Merkezi buluttan güncel veriyi çek
       const cloudData = await CloudSync.fetchCategory(catId);
 
       let finalData = null;
 
       if (cloudData && cloudData.photos && cloudData.photos.length > 0) {
-        // Buluttaki veri geçerliyse öncelik buluttadır (cihazlar arası paylaşım)
         finalData = cloudData;
 
-        // Yerel photos.js'te yeni eklenmiş kişi varsa ve bulutta yoksa buluta ekle
-        let addedNew = false;
+        // photos.js'te fotoğrafı olup bulutta dataUrl olmayanların görselini tamamla
+        finalData.photos.forEach((p, i) => {
+          if (!p.dataUrl && sharedList[i] && sharedList[i].dataUrl) {
+            p.dataUrl = sharedList[i].dataUrl;
+          }
+          if ((!p.name || p.name.startsWith('#')) && sharedList[i] && sharedList[i].name) {
+            p.name = sharedList[i].name;
+          }
+        });
+
+        // photos.js'te daha fazla kişi varsa onları da buluta dahil et
         if (sharedList.length > finalData.photos.length) {
           for (let i = finalData.photos.length; i < sharedList.length; i++) {
             const sh = sharedList[i];
@@ -207,20 +241,16 @@ class Big5App {
               mvpCount: 0,
               bigNoCount: 0
             });
-            addedNew = true;
           }
-        }
-        if (addedNew) {
           finalData.lastUpdated = new Date().toISOString();
           await CloudSync.pushCategory(finalData);
         }
+
         await Database.saveCategory(finalData);
       } else if (localData && localData.photos) {
         finalData = localData;
-        // Bulut boşsa yerel veriyi buluta ilk seed olarak gönder
         await CloudSync.pushCategory(finalData);
       } else {
-        // İlk başlangıç oluşturma
         const targetCount = Math.max(16, sharedList.length);
         finalData = {
           id: catId,
@@ -247,16 +277,14 @@ class Big5App {
   }
 
   setupAutoSync() {
-    // Sayfa tekrar aktif olduğunda veya odaklandığında buluttan en güncel puanları çek
     window.addEventListener('focus', () => this.syncFromCloudSilently());
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) this.syncFromCloudSilently();
     });
 
-    // 25 saniyede bir periyodik arka plan senkronizasyonu
     setInterval(() => {
       if (!document.hidden) this.syncFromCloudSilently();
-    }, 25000);
+    }, 15000);
   }
 
   async syncFromCloudSilently() {
@@ -265,9 +293,13 @@ class Big5App {
     try {
       const cloudData = await CloudSync.fetchCategory(this.currentCategory);
       if (cloudData && cloudData.lastUpdated && this.categoryData) {
-        if (cloudData.lastUpdated !== this.categoryData.lastUpdated || cloudData.photos.length !== this.categoryData.photos.length) {
+        const isNewer = cloudData.lastUpdated !== this.categoryData.lastUpdated;
+        const countDiff = cloudData.photos.length !== this.categoryData.photos.length;
+
+        if (isNewer || countDiff) {
           this.categoryData = cloudData;
           await Database.saveCategory(cloudData);
+
           if (document.getElementById('view-results') && !document.getElementById('view-results').classList.contains('hidden')) {
             this.showResults();
           } else if (document.getElementById('view-rating') && !document.getElementById('view-rating').classList.contains('hidden')) {
@@ -304,7 +336,7 @@ class Big5App {
   async selectCategory(catId) {
     this.currentCategory = catId;
 
-    // Kategori seçildiğinde buluttaki en güncel veriyi çek
+    // Kategoriye girerken buluttan en güncel puanları çek
     const cloudData = await CloudSync.fetchCategory(catId);
     if (cloudData && cloudData.photos) {
       this.categoryData = cloudData;
@@ -335,7 +367,7 @@ class Big5App {
     if (!this.categoryData) return;
     const len = this.categoryData.photos.length;
     this.tempScores = new Array(len).fill(null);
-    this.tempSpecialCodes = new Array(len).fill(null); // 'E' veya 'Y'
+    this.tempSpecialCodes = new Array(len).fill(null); // 'E' | 'Y' | null
     this.mvpIndex = null;
     this.bigNoIndex = null;
 
@@ -400,9 +432,9 @@ class Big5App {
               : 'bg-slate-900/60 border-slate-800'
       }`;
 
-      // 'E' Harfi Butonu (Otomatik 0 Puan)
+      // 'E' Harfi Seçili mi? (0 Puan)
       const isESelected = specialCode === 'E';
-      // 'Y' Harfi Butonu (Otomatik 0 Puan)
+      // 'Y' Harfi Seçili mi? (0 Puan)
       const isYSelected = specialCode === 'Y';
 
       let pillsHtml = `
@@ -419,7 +451,7 @@ class Big5App {
 
         <!-- Y Harfi Butonu (0 Puan) -->
         <button onclick="app.setSpecialScore(${idx}, 'Y')" 
-                title="Y: Yok / 0 Puan"
+                title="Y: Yok / Yetersiz (0 Puan)"
                 class="score-pill-btn min-w-[26px] h-7 rounded text-[11px] font-black border transition ${
                   isYSelected
                     ? 'active bg-amber-600 text-white border-amber-400 font-black shadow-md shadow-amber-600/30'
@@ -473,7 +505,6 @@ class Big5App {
         scoreColorClass = 'text-rose-400';
       }
 
-      // Rozet
       let badgeHtml = '';
       if (isMvp) {
         badgeHtml = '<span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-300 font-extrabold border border-amber-400/50">⭐ MVP</span>';
@@ -659,7 +690,7 @@ class Big5App {
     // 1. Yerel IndexedDB'ye kaydet
     await Database.saveCategory(this.categoryData);
 
-    // 2. Merkezi Bulut Veritabanına asenkron push et (cihazlar arası paylaşım)
+    // 2. Merkezi Bulut Veritabanına kaydet (cihazlar arası ortak)
     CloudSync.pushCategory(this.categoryData);
 
     const mvpName = this.mvpIndex !== null ? this.categoryData.photos[this.mvpIndex]?.name : null;
@@ -668,7 +699,7 @@ class Big5App {
     if (mvpName) extraMsg += ` • ⭐ MVP: ${mvpName}`;
     if (bigNoName) extraMsg += ` • 🚫 Big No: ${bigNoName}`;
 
-    this.showToast(`${this.currentRound}. Tur puanları kalıcı olarak kaydedildi${extraMsg}`);
+    this.showToast(`${this.currentRound}. Tur puanları kaydedildi ve tüm cihazlara eşitlendi${extraMsg}`);
 
     this.mvpIndex = null;
     this.bigNoIndex = null;
@@ -680,7 +711,7 @@ class Big5App {
     document.getElementById('view-results').classList.remove('hidden');
 
     const totalRounds = this.categoryData.roundsCount || 0;
-    document.getElementById('results-round-info').textContent = `${totalRounds} Puanlama Turu Kayıtlı`;
+    document.getElementById('results-round-info').textContent = `${totalRounds} Puanlama Turu Kayıtlı (Ortak)`;
 
     this.renderResultsTable();
   }
@@ -786,7 +817,7 @@ class Big5App {
 
     const isGirls = this.currentCategory === 'kizlar';
     const catName = isGirls ? 'Kızlar' : 'Erkekler';
-    const confirmReset = confirm(`${catName} kategorisindeki tüm turları ve verilen puanları sıfırlamak istediğinize emin misiniz?\n\n(Bu işlem tüm cihazlardaki puanları 1. Tura sıfırlar)`);
+    const confirmReset = confirm(`${catName} kategorisindeki tüm turları ve verilen puanları sıfırlamak istediğinize emin misiniz?\n\n(Bu işlem TÜM CİHAZLARDAKİ puanları 1. Tura sıfırlar)`);
     if (!confirmReset) return;
 
     try {
