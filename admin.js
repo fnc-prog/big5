@@ -165,13 +165,19 @@ class AdminPanel {
         await CloudSync.pushCategory(data);
       } else {
         let updated = false;
+        data.photos.forEach((p, i) => {
+          if (!p.dataUrl && sharedList[i] && sharedList[i].dataUrl) {
+            p.dataUrl = sharedList[i].dataUrl;
+            updated = true;
+          }
+        });
         while (data.photos.length < 16) {
           const newSlot = data.photos.length + 1;
           data.photos.push({
             id: `${catId}_photo_${newSlot}`,
             slot: newSlot,
-            name: `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${newSlot}`,
-            dataUrl: null,
+            name: (sharedList[newSlot - 1] && sharedList[newSlot - 1].name) ? sharedList[newSlot - 1].name : `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${newSlot}`,
+            dataUrl: (sharedList[newSlot - 1] && sharedList[newSlot - 1].dataUrl) ? sharedList[newSlot - 1].dataUrl : null,
             scores: [],
             mvpCount: 0,
             bigNoCount: 0

@@ -105,7 +105,10 @@
     </div>
   </div>
 
-  <script src="config.js?v=4"></script>
-  <script src="admin.js?v=4"></script>
+  <script src="config.js?v=5"></script>
+  <script>
+    document.write('<script src="photos.js?t=' + Date.now() + '"><\/script>');
+  </script>
+  <script src="admin.js?v=5"></script>
 </body>
 </html>
