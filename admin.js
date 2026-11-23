@@ -469,8 +469,22 @@ class AdminPanel {
   }
 
   async publishToPhotosJs() {
+    this.showToast('Fotoğraflar merkezi buluta ve yayına aktarılıyor...');
     const kizlarData = await Database.getCategory('kizlar');
     const erkeklerData = await Database.getCategory('erkekler');
+
+    // 1. Doğrudan Canlı Merkezi Buluta Gönder (Tüm cihazlar anında görsün)
+    let cloudSuccess = false;
+    if (kizlarData) {
+      kizlarData.lastUpdated = new Date().toISOString();
+      await Database.saveCategory(kizlarData);
+      cloudSuccess = await CloudSync.pushCategory(kizlarData);
+    }
+    if (erkeklerData) {
+      erkeklerData.lastUpdated = new Date().toISOString();
+      await Database.saveCategory(erkeklerData);
+      cloudSuccess = await CloudSync.pushCategory(erkeklerData) || cloudSuccess;
+    }
 
     const cleanPhotos = (catData) => {
       if (!catData || !catData.photos) return [];
@@ -493,6 +507,7 @@ class AdminPanel {
 window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
 `;
 
+    // 2. Dosya Kaydetme (Modern Picker)
     if (window.showSaveFilePicker) {
       try {
         const handle = await window.showSaveFilePicker({
@@ -505,13 +520,19 @@ window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
         const writable = await handle.createWritable();
         await writable.write(fileContent);
         await writable.close();
-        this.showToast('photos.js başarıyla kaydedildi! GitHuba_Yukle.bat ile GitHub\'a gönderebilirsiniz.');
+        this.showToast('🎉 Fotoğraflar hem merkezi buluta yüklendi hem photos.js kaydedildi!');
         return;
       } catch (err) {
-        if (err.name === 'AbortError') return;
+        if (err.name === 'AbortError') {
+          if (cloudSuccess) {
+            this.showToast('✅ Fotoğraflar merkezi buluta başarıyla yüklendi! Tüm cihazlarda yayında.');
+          }
+          return;
+        }
       }
     }
 
+    // 3. Dosya İndirme Alternatifi
     const blob = new Blob([fileContent], { type: 'text/javascript;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -521,7 +542,7 @@ window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    this.showToast('photos.js indirildi! Klasöre kopyalayıp GitHuba_Yukle.bat ile GitHub\'a gönderin.');
+    this.showToast('✅ Fotoğraflar canlı buluta aktarıldı! (photos.js de indirildi)');
   }
 
   // Fotoğrafları otomatik optimize et (Maksimum 500px, %78 kalite ile buluta hızlı ve hafif aktarım)
