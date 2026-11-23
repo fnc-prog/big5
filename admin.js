@@ -1,9 +1,14 @@
 /**
  * Big5 Admin Yönetici Paneli Betiği
+ * 
+ * Özellikler:
+ * - Aday Ekleme / Fotoğraf Düzenleme
+ * - Yapılan değişikliklerin anında merkezi veritabanına (CloudSync) senkronize edilmesi
+ * - Cihazlar arası otomatik ortak veri aktarımı
  */
 
 const DB_NAME = 'Big5_PhotoRatingDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'categories';
 
 class Database {
@@ -44,6 +49,56 @@ class Database {
   }
 }
 
+/**
+ * CloudSync - Admin Paneli Merkezi Senkronizasyon
+ */
+class CloudSync {
+  static getConfig() {
+    return window.BIG5_CONFIG ? window.BIG5_CONFIG.cloud : { enabled: false };
+  }
+
+  static getEndpoint(catId) {
+    const cfg = this.getConfig();
+    if (!cfg || !cfg.enabled) return null;
+    if (cfg.provider === 'firebase_rtdb' && cfg.firebaseUrl) {
+      const base = cfg.firebaseUrl.replace(/\/+$/, '');
+      return `${base}/big5/categories/${catId}.json`;
+    }
+    if (cfg.customApiUrl) {
+      const base = cfg.customApiUrl.replace(/\/+$/, '');
+      return `${base}/categories/${catId}`;
+    }
+    return null;
+  }
+
+  static async fetchCategory(catId) {
+    const endpoint = this.getEndpoint(catId);
+    if (!endpoint) return null;
+    try {
+      const res = await fetch(endpoint, { cache: 'no-cache' });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static async pushCategory(categoryData) {
+    const endpoint = this.getEndpoint(categoryData.id);
+    if (!endpoint) return false;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(categoryData)
+      });
+      return res.ok;
+    } catch (e) {
+      return false;
+    }
+  }
+}
+
 class AdminPanel {
   constructor() {
     this.currentCategory = 'kizlar';
@@ -58,7 +113,12 @@ class AdminPanel {
   async ensureInitialData() {
     for (const catId of ['kizlar', 'erkekler']) {
       let data = await Database.getCategory(catId);
-      if (!data) {
+      const cloudData = await CloudSync.fetchCategory(catId);
+
+      if (cloudData && cloudData.photos && cloudData.photos.length > 0) {
+        data = cloudData;
+        await Database.saveCategory(data);
+      } else if (!data) {
         data = {
           id: catId,
           name: catId === 'kizlar' ? 'Kızlar' : 'Erkekler',
@@ -67,14 +127,16 @@ class AdminPanel {
             slot: i + 1,
             name: `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${i + 1}`,
             dataUrl: null,
-            scores: []
+            scores: [],
+            mvpCount: 0,
+            bigNoCount: 0
           })),
           roundsCount: 0,
           lastUpdated: new Date().toISOString()
         };
         await Database.saveCategory(data);
+        await CloudSync.pushCategory(data);
       } else {
-        // En az 16 slot olmasını sağla (1 yeni slot ekleme)
         let updated = false;
         while (data.photos.length < 16) {
           const newSlot = data.photos.length + 1;
@@ -83,17 +145,24 @@ class AdminPanel {
             slot: newSlot,
             name: `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${newSlot}`,
             dataUrl: null,
-            scores: []
+            scores: [],
+            mvpCount: 0,
+            bigNoCount: 0
           });
           updated = true;
         }
         if (updated) {
+          data.lastUpdated = new Date().toISOString();
           await Database.saveCategory(data);
+          await CloudSync.pushCategory(data);
         }
       }
     }
   }
 
+  /**
+   * 3. Yeni Kişi Ekleme (Tüm Cihazlara Anında Yansır)
+   */
   async addNewSlot() {
     if (!this.categoryData) return;
     const catId = this.currentCategory;
@@ -103,12 +172,18 @@ class AdminPanel {
       slot: newSlot,
       name: `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${newSlot}`,
       dataUrl: null,
-      scores: []
+      scores: [],
+      mvpCount: 0,
+      bigNoCount: 0
     });
+    this.categoryData.lastUpdated = new Date().toISOString();
+
     await Database.saveCategory(this.categoryData);
+    await CloudSync.pushCategory(this.categoryData);
+
     await this.updateCounts();
     this.renderGrid();
-    this.showToast(`Yeni aday slotu (#${newSlot}) eklendi.`);
+    this.showToast(`Yeni aday slotu (#${newSlot}) eklendi ve tüm cihazlar için kaydedildi.`);
   }
 
   async updateCounts() {
@@ -127,7 +202,14 @@ class AdminPanel {
 
   async switchCategory(catId) {
     this.currentCategory = catId;
-    this.categoryData = await Database.getCategory(catId);
+
+    const cloudData = await CloudSync.fetchCategory(catId);
+    if (cloudData && cloudData.photos) {
+      this.categoryData = cloudData;
+      await Database.saveCategory(cloudData);
+    } else {
+      this.categoryData = await Database.getCategory(catId);
+    }
 
     const isGirls = catId === 'kizlar';
     const tabKizlar = document.getElementById('admin-tab-kizlar');
@@ -223,11 +305,14 @@ class AdminPanel {
     this.categoryData.photos[idx].dataUrl = dataUrl;
     const cleanName = file.name.replace(/\.[^/.]+$/, "").substring(0, 20);
     this.categoryData.photos[idx].name = cleanName || `#${idx + 1}`;
+    this.categoryData.lastUpdated = new Date().toISOString();
 
     await Database.saveCategory(this.categoryData);
+    await CloudSync.pushCategory(this.categoryData);
+
     await this.updateCounts();
     this.renderGrid();
-    this.showToast(`#${idx + 1} nolu fotoğraf yüklendi.`);
+    this.showToast(`#${idx + 1} nolu fotoğraf yüklendi ve buluta senkronize edildi.`);
   }
 
   async handleBulkUpload(event) {
@@ -242,10 +327,13 @@ class AdminPanel {
       this.categoryData.photos[i].name = cleanName || `#${i + 1}`;
     }
 
+    this.categoryData.lastUpdated = new Date().toISOString();
     await Database.saveCategory(this.categoryData);
+    await CloudSync.pushCategory(this.categoryData);
+
     await this.updateCounts();
     this.renderGrid();
-    this.showToast(`${Math.min(files.length, totalSlots)} fotoğraf yüklendi.`);
+    this.showToast(`${Math.min(files.length, totalSlots)} fotoğraf yüklendi ve senkronize edildi.`);
     event.target.value = '';
   }
 
@@ -253,7 +341,11 @@ class AdminPanel {
     if (!confirm(`#${idx + 1} fotoğrafı silmek istiyor musunuz?`)) return;
     this.categoryData.photos[idx].dataUrl = null;
     this.categoryData.photos[idx].scores = [];
+    this.categoryData.lastUpdated = new Date().toISOString();
+
     await Database.saveCategory(this.categoryData);
+    await CloudSync.pushCategory(this.categoryData);
+
     await this.updateCounts();
     this.renderGrid();
     this.showToast('Fotoğraf silindi.');
@@ -261,21 +353,30 @@ class AdminPanel {
 
   async updatePhotoName(idx, name) {
     this.categoryData.photos[idx].name = name.trim() || `#${idx + 1}`;
+    this.categoryData.lastUpdated = new Date().toISOString();
+
     await Database.saveCategory(this.categoryData);
+    await CloudSync.pushCategory(this.categoryData);
   }
 
   async clearCategoryPhotos() {
-    if (!confirm('Bu kategorideki tüm fotoğrafları silmek istediğinize emin misiniz?')) return;
+    if (!confirm('Bu kategorideki tüm fotoğrafları ve puanları silmek istediğinize emin misiniz?')) return;
     this.categoryData.photos.forEach((p, i) => {
       p.dataUrl = null;
       p.scores = [];
+      p.mvpCount = 0;
+      p.bigNoCount = 0;
       p.name = `${this.currentCategory === 'kizlar' ? 'Kız' : 'Erkek'} #${i + 1}`;
     });
     this.categoryData.roundsCount = 0;
+    this.categoryData.lastUpdated = new Date().toISOString();
+
     await Database.saveCategory(this.categoryData);
+    await CloudSync.pushCategory(this.categoryData);
+
     await this.updateCounts();
     this.renderGrid();
-    this.showToast('Kategori temizlendi.');
+    this.showToast('Kategori temizlendi ve buluta aktarıldı.');
   }
 
   async loadSamplePhotos() {
@@ -283,11 +384,11 @@ class AdminPanel {
     const names = isGirls ? [
       'Aday 1', 'Aday 2', 'Aday 3', 'Aday 4', 'Aday 5',
       'Aday 6', 'Aday 7', 'Aday 8', 'Aday 9', 'Aday 10',
-      'Aday 11', 'Aday 12', 'Aday 13', 'Aday 14', 'Aday 15'
+      'Aday 11', 'Aday 12', 'Aday 13', 'Aday 14', 'Aday 15', 'Aday 16'
     ] : [
       'Aday 1', 'Aday 2', 'Aday 3', 'Aday 4', 'Aday 5',
       'Aday 6', 'Aday 7', 'Aday 8', 'Aday 9', 'Aday 10',
-      'Aday 11', 'Aday 12', 'Aday 13', 'Aday 14', 'Aday 15'
+      'Aday 11', 'Aday 12', 'Aday 13', 'Aday 14', 'Aday 15', 'Aday 16'
     ];
 
     const colors = [
@@ -295,10 +396,11 @@ class AdminPanel {
       ['#10b981', '#059669'], ['#f59e0b', '#d97706'], ['#d946ef', '#a855f7'],
       ['#3b82f6', '#1d4ed8'], ['#14b8a6', '#0d9488'], ['#fb7185', '#e11d48'],
       ['#a855f7', '#7c3aed'], ['#eab308', '#ca8a04'], ['#64748b', '#334155'],
-      ['#f97316', '#c2410c'], ['#2dd4bf', '#0f766e'], ['#ec4899', '#8b5cf6']
+      ['#f97316', '#c2410c'], ['#2dd4bf', '#0f766e'], ['#ec4899', '#8b5cf6'], ['#6366f1', '#a855f7']
     ];
 
-    for (let i = 0; i < 15; i++) {
+    const len = this.categoryData.photos.length;
+    for (let i = 0; i < len; i++) {
       const canvas = document.createElement('canvas');
       canvas.width = 400;
       canvas.height = 500;
@@ -321,16 +423,20 @@ class AdminPanel {
       ctx.fillRect(0, 420, 400, 80);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 24px sans-serif';
-      ctx.fillText(names[i], 200, 465);
+      const name = names[i] || `Aday ${i + 1}`;
+      ctx.fillText(name, 200, 465);
 
       this.categoryData.photos[i].dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      this.categoryData.photos[i].name = names[i];
+      this.categoryData.photos[i].name = name;
     }
 
+    this.categoryData.lastUpdated = new Date().toISOString();
     await Database.saveCategory(this.categoryData);
+    await CloudSync.pushCategory(this.categoryData);
+
     await this.updateCounts();
     this.renderGrid();
-    this.showToast('15 örnek fotoğraf yüklendi!');
+    this.showToast('Örnek fotoğraflar yüklendi ve senkronize edildi!');
   }
 
   async publishToPhotosJs() {
@@ -358,7 +464,6 @@ class AdminPanel {
 window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
 `;
 
-    // Modern showSaveFilePicker varsa doğrudan üzerine yazdır, yoksa indir
     if (window.showSaveFilePicker) {
       try {
         const handle = await window.showSaveFilePicker({
@@ -371,14 +476,13 @@ window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
         const writable = await handle.createWritable();
         await writable.write(fileContent);
         await writable.close();
-        this.showToast('photos.js başarıyla kaydedildi! Şimdi GitHuba_Yukle.bat ile GitHub\'a gönderin.');
+        this.showToast('photos.js başarıyla kaydedildi! GitHuba_Yukle.bat ile GitHub\'a gönderebilirsiniz.');
         return;
       } catch (err) {
         if (err.name === 'AbortError') return;
       }
     }
 
-    // Standart indirme alternatifi
     const blob = new Blob([fileContent], { type: 'text/javascript;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -388,10 +492,9 @@ window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    this.showToast('photos.js indirildi! Bu dosyayı klasöre kopyalayıp GitHuba_Yukle.bat ile GitHub\'a gönderin.');
+    this.showToast('photos.js indirildi! Klasöre kopyalayıp GitHuba_Yukle.bat ile GitHub\'a gönderin.');
   }
 
-  // Fotoğrafları otomatik optimize et ve sıkıştır (Maksimum 800px, %82 kalite)
   readFile(file) {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -425,13 +528,16 @@ window.BIG5_SHARED_DATA = ${JSON.stringify(sharedData, null, 2)};
     });
   }
 
-  showToast(msg) {
+  showToast(msg, type = 'success') {
     const c = document.getElementById('toast-container');
     const t = document.createElement('div');
-    t.className = 'bg-slate-800 text-white text-xs px-3 py-2 rounded-lg shadow-lg border border-slate-700';
+    const colorClass = type === 'error'
+      ? 'bg-rose-900 text-white border-rose-700'
+      : 'bg-slate-800 text-white border-slate-700';
+    t.className = `${colorClass} text-xs px-3 py-2 rounded-lg shadow-lg border`;
     t.textContent = msg;
     c.appendChild(t);
-    setTimeout(() => t.remove(), 2500);
+    setTimeout(() => t.remove(), 2800);
   }
 
   openImageModal(url) {

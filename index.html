@@ -16,16 +16,20 @@
   <!-- Üst Bar -->
   <header class="border-b border-slate-900 bg-slate-950/80 backdrop-blur sticky top-0 z-40">
     <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-      <div class="flex items-center gap-2 cursor-pointer" onclick="app.navigate('home')">
+      <div class="flex items-center gap-2.5 cursor-pointer" onclick="app.navigate('home')">
         <span class="w-2.5 h-2.5 rounded-full bg-pink-500"></span>
         <span id="nav-brand-title" class="font-extrabold text-white text-base tracking-tight">Big5 Puanlama</span>
+        <!-- Bulut Senkronizasyon Durumu -->
+        <span id="cloud-sync-status" class="hidden sm:flex text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Ortak Bulut Aktif
+        </span>
       </div>
 
       <div class="flex items-center gap-2">
         <button id="btn-back-home" onclick="app.navigate('home')" class="hidden text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 transition">
           <i class="fa-solid fa-arrow-left mr-1"></i> Geri
         </button>
-        <a href="admin.html" title="Yönetici Paneli (Fotoğraf Yükleme)" class="p-2 text-slate-600 hover:text-slate-300 rounded-lg transition">
+        <a href="admin.html" title="Yönetici Paneli (Fotoğraf & Aday Yönetimi)" class="p-2 text-slate-500 hover:text-slate-300 rounded-lg transition">
           <i class="fa-solid fa-gear text-sm"></i>
         </a>
       </div>
@@ -38,7 +42,7 @@
     <section id="view-home" class="space-y-8 animate-fade-in max-w-xl mx-auto pt-6 text-center">
       <div>
         <h1 class="text-3xl font-extrabold text-white tracking-tight">Big5 Puanlama</h1>
-        <p class="text-xs text-slate-500 mt-1">Lütfen puanlamak istediğiniz grubu seçin</p>
+        <p class="text-xs text-slate-500 mt-1">Lütfen puanlamak istediğiniz grubu seçin (Puanlar tüm cihazlarda ortaktır)</p>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -50,7 +54,7 @@
           </div>
           <div>
             <h2 class="text-lg font-bold text-white group-hover:text-pink-400 transition">Big5 Kızlar</h2>
-            <span id="home-kizlar-status" class="text-xs text-slate-500">16 Fotoğraf</span>
+            <span id="home-kizlar-status" class="text-xs text-slate-500">Yükleniyor...</span>
           </div>
         </button>
 
@@ -62,7 +66,7 @@
           </div>
           <div>
             <h2 class="text-lg font-bold text-white group-hover:text-indigo-400 transition">Big5 Erkekler</h2>
-            <span id="home-erkekler-status" class="text-xs text-slate-500">16 Fotoğraf</span>
+            <span id="home-erkekler-status" class="text-xs text-slate-500">Yükleniyor...</span>
           </div>
         </button>
       </div>
@@ -82,19 +86,19 @@
             <span class="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 font-semibold flex items-center gap-1">
               <i class="fa-solid fa-ban text-[9px] text-rose-400"></i> 1 Big No (-1)
             </span>
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold flex items-center gap-1">
-              <span class="font-extrabold text-rose-400">E</span> = 0 Puan
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold flex items-center gap-1.5">
+              <span class="font-black text-rose-400">E</span> = 0 Puan <span class="text-slate-500">•</span> <span class="font-black text-amber-400">Y</span> = 0 Puan
             </span>
           </div>
           <span id="round-indicator" class="text-xs text-pink-400 font-semibold">1. Tur</span>
         </div>
 
         <div class="flex items-center gap-2">
-          <span id="progress-indicator" class="text-xs font-bold text-slate-400">0 / 16 Puanlandı</span>
+          <span id="progress-indicator" class="text-xs font-bold text-slate-400">0 Puanlandı</span>
           <button id="btn-show-results-top" onclick="app.showResults()" class="hidden text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
             Sonuçlar
           </button>
-          <button onclick="app.resetAllScores()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-950/50 text-slate-400 hover:text-rose-400 border border-slate-800 transition" title="Puanları sıfırla">
+          <button onclick="app.resetAllScores()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-950/50 text-slate-400 hover:text-rose-400 border border-slate-800 transition" title="Tüm cihazlar için puanları sıfırla">
             <i class="fa-solid fa-rotate-left mr-1"></i> Sıfırla
           </button>
         </div>
@@ -142,7 +146,7 @@
           <button onclick="app.editLatestRound()" class="btn-secondary text-xs py-2 px-3">
             <i class="fa-solid fa-pen"></i> Puanları Düzenle
           </button>
-          <button onclick="app.resetAllScores()" class="btn-danger text-xs py-2 px-3" title="Tüm puanları sıfırla">
+          <button onclick="app.resetAllScores()" class="btn-danger text-xs py-2 px-3" title="Tüm cihazlardaki puanları sıfırla">
             <i class="fa-solid fa-rotate-left"></i> Puanları Sıfırla
           </button>
         </div>
@@ -193,10 +197,11 @@
 
   <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-  <!-- Genel Fotoğraflar (GitHub'dan anlık güncel çekilir) -->
+  <!-- Yapılandırma ve Veri Betikleri -->
+  <script src="config.js?v=2"></script>
   <script>
     document.write('<script src="photos.js?t=' + Date.now() + '"><\/script>');
   </script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

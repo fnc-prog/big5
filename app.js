@@ -1,15 +1,18 @@
 /**
  * Big5 Puanlama Uygulaması
  * Big5 Kızlar & Big5 Erkekler 15 Puan Değerlendirme & Çoklu Tur Sistemi
+ * 
  * Özellikler:
- * - 0-15 Puanlama + 'E' Harfi (Otomatik 0 Puan)
+ * - Merkezi Bulut Senkronizasyonu (Cihazlar ve Tarayıcılar Arası Ortak Veri & Kalıcı Puanlama)
+ * - Global Puan Sıfırlama (Tüm cihazlarda eski puanları temizleme)
+ * - 0-15 Puanlama + 'E' Harfi (0 Puan) + 'Y' Harfi (0 Puan)
  * - MVP Seçimi: Tur başına 1 adaya +1 bonus puan (⭐)
  * - Big No Seçimi: Tur başına 1 adaya -1 ceza puanı (🚫, MVP'nin tam tersi)
- * - 16+ Aday Desteği (Dinamik slot ve fotoğraf sayısı)
+ * - Dinamik Aday Sistemi (Yeni kişi eklendiğinde tüm cihazlara anında yansıma)
  */
 
 const DB_NAME = 'Big5_PhotoRatingDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Sürüm artırılarak eski yerel şema güncellendi
 const STORE_NAME = 'categories';
 
 class Database {
@@ -50,30 +53,176 @@ class Database {
   }
 }
 
+/**
+ * CloudSync - Merkezi Veritabanı ve Cihazlar Arası Senkronizasyon Servisi
+ */
+class CloudSync {
+  static getConfig() {
+    return window.BIG5_CONFIG ? window.BIG5_CONFIG.cloud : { enabled: false };
+  }
+
+  static getEndpoint(catId) {
+    const cfg = this.getConfig();
+    if (!cfg || !cfg.enabled) return null;
+    if (cfg.provider === 'firebase_rtdb' && cfg.firebaseUrl) {
+      const base = cfg.firebaseUrl.replace(/\/+$/, '');
+      return `${base}/big5/categories/${catId}.json`;
+    }
+    if (cfg.customApiUrl) {
+      const base = cfg.customApiUrl.replace(/\/+$/, '');
+      return `${base}/categories/${catId}`;
+    }
+    return null;
+  }
+
+  static updateStatusIndicator(status) {
+    const el = document.getElementById('cloud-sync-status');
+    if (!el) return;
+    if (status === 'syncing') {
+      el.className = 'text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-medium flex items-center gap-1.5';
+      el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> Bulut Senkronize Ediliyor...';
+    } else if (status === 'synced') {
+      el.className = 'text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium flex items-center gap-1.5';
+      el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Ortak Bulut Aktif';
+    } else if (status === 'error' || status === 'offline') {
+      el.className = 'text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium flex items-center gap-1.5';
+      el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Yerel Mod';
+    }
+  }
+
+  static async fetchCategory(catId) {
+    const endpoint = this.getEndpoint(catId);
+    if (!endpoint) return null;
+    try {
+      this.updateStatusIndicator('syncing');
+      const res = await fetch(endpoint, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const data = await res.json();
+      this.updateStatusIndicator('synced');
+      return data;
+    } catch (err) {
+      console.warn(`[CloudSync] ${catId} verisi buluttan çekilemedi, yerel veri kullanılacak:`, err);
+      this.updateStatusIndicator('offline');
+      return null;
+    }
+  }
+
+  static async pushCategory(categoryData) {
+    const endpoint = this.getEndpoint(categoryData.id);
+    if (!endpoint) return false;
+    try {
+      this.updateStatusIndicator('syncing');
+      const res = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(categoryData)
+      });
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      this.updateStatusIndicator('synced');
+      return true;
+    } catch (err) {
+      console.warn(`[CloudSync] ${categoryData.id} verisi buluta yazılamadı:`, err);
+      this.updateStatusIndicator('offline');
+      return false;
+    }
+  }
+}
+
 class Big5App {
   constructor() {
     this.currentCategory = null; // 'kizlar' | 'erkekler'
     this.categoryData = null;
     this.currentRound = 1;
     this.tempScores = [];
-    this.tempEliminated = []; // E harfine basılanlar
-    this.mvpIndex = null; // Seçilen MVP fotoğrafının index'i
-    this.bigNoIndex = null; // Seçilen Big No fotoğrafının index'i
+    this.tempSpecialCodes = []; // 'E' | 'Y' | null
+    this.mvpIndex = null;
+    this.bigNoIndex = null;
+    this.isSyncing = false;
   }
 
   async init() {
+    await this.handleGlobalReset();
     await this.ensureInitialData();
     await this.updateHomeStatuses();
+    this.setupAutoSync();
   }
 
+  /**
+   * 1. Tüm Mevcut Puanları Sıfırla (Global Reset)
+   * GLOBAL_DATA_VERSION değiştiğinde tüm cihazlarda eski puanları tamamen temizler.
+   */
+  async handleGlobalReset() {
+    const requiredVersion = window.BIG5_CONFIG ? window.BIG5_CONFIG.GLOBAL_DATA_VERSION : 'v2_global_reset_20261123';
+    const currentVersion = localStorage.getItem('big5_global_reset_version');
+
+    if (currentVersion !== requiredVersion) {
+      console.log('[Big5] Global sıfırlama uygulanıyor... Tüm eski puanlar sıfırlanıyor.');
+      for (const catId of ['kizlar', 'erkekler']) {
+        let localData = await Database.getCategory(catId);
+        if (localData && localData.photos) {
+          localData.photos.forEach(p => {
+            p.scores = [];
+            p.mvpCount = 0;
+            p.bigNoCount = 0;
+          });
+          localData.roundsCount = 0;
+          localData.lastUpdated = new Date().toISOString();
+          await Database.saveCategory(localData);
+          await CloudSync.pushCategory(localData);
+        }
+      }
+      localStorage.setItem('big5_global_reset_version', requiredVersion);
+      this.showToast('Tüm puanlar merkezi olarak sıfırlandı. 1. Turdan başlayabilirsiniz.');
+    }
+  }
+
+  /**
+   * 2 & 3. Kalıcı ve Cihazlar Arası Ortak Veri & Yeni Kişi Eklemenin Tüm Cihazlarda Görünmesi
+   */
   async ensureInitialData() {
     for (const catId of ['kizlar', 'erkekler']) {
-      let data = await Database.getCategory(catId);
+      let localData = await Database.getCategory(catId);
       const sharedList = (window.BIG5_SHARED_DATA && window.BIG5_SHARED_DATA[catId]) ? window.BIG5_SHARED_DATA[catId] : [];
-      const targetCount = Math.max(16, sharedList.length);
+      
+      // Buluttan merkezi veriyi çekmeyi dene
+      const cloudData = await CloudSync.fetchCategory(catId);
 
-      if (!data) {
-        data = {
+      let finalData = null;
+
+      if (cloudData && cloudData.photos && cloudData.photos.length > 0) {
+        // Buluttaki veri geçerliyse öncelik buluttadır (cihazlar arası paylaşım)
+        finalData = cloudData;
+
+        // Yerel photos.js'te yeni eklenmiş kişi varsa ve bulutta yoksa buluta ekle
+        let addedNew = false;
+        if (sharedList.length > finalData.photos.length) {
+          for (let i = finalData.photos.length; i < sharedList.length; i++) {
+            const sh = sharedList[i];
+            finalData.photos.push({
+              id: `${catId}_photo_${i + 1}`,
+              slot: i + 1,
+              name: sh.name || `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${i + 1}`,
+              dataUrl: sh.dataUrl || null,
+              scores: [],
+              mvpCount: 0,
+              bigNoCount: 0
+            });
+            addedNew = true;
+          }
+        }
+        if (addedNew) {
+          finalData.lastUpdated = new Date().toISOString();
+          await CloudSync.pushCategory(finalData);
+        }
+        await Database.saveCategory(finalData);
+      } else if (localData && localData.photos) {
+        finalData = localData;
+        // Bulut boşsa yerel veriyi buluta ilk seed olarak gönder
+        await CloudSync.pushCategory(finalData);
+      } else {
+        // İlk başlangıç oluşturma
+        const targetCount = Math.max(16, sharedList.length);
+        finalData = {
           id: catId,
           name: catId === 'kizlar' ? 'Big5 Kızlar' : 'Big5 Erkekler',
           photos: Array.from({ length: targetCount }, (_, i) => {
@@ -91,46 +240,47 @@ class Big5App {
           roundsCount: 0,
           lastUpdated: new Date().toISOString()
         };
-        await Database.saveCategory(data);
-      } else {
-        let updated = false;
+        await Database.saveCategory(finalData);
+        await CloudSync.pushCategory(finalData);
+      }
+    }
+  }
 
-        // En az 16 slot olmasını sağla
-        while (data.photos.length < targetCount) {
-          const newSlot = data.photos.length + 1;
-          const shared = sharedList[newSlot - 1];
-          data.photos.push({
-            id: `${catId}_photo_${newSlot}`,
-            slot: newSlot,
-            name: (shared && shared.name) ? shared.name : `${catId === 'kizlar' ? 'Kız' : 'Erkek'} #${newSlot}`,
-            dataUrl: (shared && shared.dataUrl) ? shared.dataUrl : null,
-            scores: [],
-            mvpCount: 0,
-            bigNoCount: 0
-          });
-          updated = true;
-        }
+  setupAutoSync() {
+    // Sayfa tekrar aktif olduğunda veya odaklandığında buluttan en güncel puanları çek
+    window.addEventListener('focus', () => this.syncFromCloudSilently());
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.syncFromCloudSilently();
+    });
 
-        // Sunucudan (photos.js) gelen genel fotoğraflarla yerel fotoğrafları senkronize et
-        if (sharedList.length > 0) {
-          sharedList.forEach((shared, i) => {
-            if (shared && data.photos[i]) {
-              if (shared.dataUrl && data.photos[i].dataUrl !== shared.dataUrl) {
-                data.photos[i].dataUrl = shared.dataUrl;
-                updated = true;
-              }
-              if (shared.name && data.photos[i].name !== shared.name) {
-                data.photos[i].name = shared.name;
-                updated = true;
-              }
-            }
-          });
-        }
+    // 25 saniyede bir periyodik arka plan senkronizasyonu
+    setInterval(() => {
+      if (!document.hidden) this.syncFromCloudSilently();
+    }, 25000);
+  }
 
-        if (updated) {
-          await Database.saveCategory(data);
+  async syncFromCloudSilently() {
+    if (!this.currentCategory || this.isSyncing) return;
+    this.isSyncing = true;
+    try {
+      const cloudData = await CloudSync.fetchCategory(this.currentCategory);
+      if (cloudData && cloudData.lastUpdated && this.categoryData) {
+        if (cloudData.lastUpdated !== this.categoryData.lastUpdated || cloudData.photos.length !== this.categoryData.photos.length) {
+          this.categoryData = cloudData;
+          await Database.saveCategory(cloudData);
+          if (document.getElementById('view-results') && !document.getElementById('view-results').classList.contains('hidden')) {
+            this.showResults();
+          } else if (document.getElementById('view-rating') && !document.getElementById('view-rating').classList.contains('hidden')) {
+            this.renderRatingPhotos();
+            this.updateProgress();
+          }
+          await this.updateHomeStatuses();
         }
       }
+    } catch (e) {
+      console.warn('Silent sync error:', e);
+    } finally {
+      this.isSyncing = false;
     }
   }
 
@@ -153,7 +303,15 @@ class Big5App {
 
   async selectCategory(catId) {
     this.currentCategory = catId;
-    this.categoryData = await Database.getCategory(catId);
+
+    // Kategori seçildiğinde buluttaki en güncel veriyi çek
+    const cloudData = await CloudSync.fetchCategory(catId);
+    if (cloudData && cloudData.photos) {
+      this.categoryData = cloudData;
+      await Database.saveCategory(cloudData);
+    } else {
+      this.categoryData = await Database.getCategory(catId);
+    }
 
     const isGirls = catId === 'kizlar';
     document.getElementById('nav-brand-title').textContent = isGirls ? 'Big5 Kızlar Puanlama' : 'Big5 Erkekler Puanlama';
@@ -177,7 +335,7 @@ class Big5App {
     if (!this.categoryData) return;
     const len = this.categoryData.photos.length;
     this.tempScores = new Array(len).fill(null);
-    this.tempEliminated = new Array(len).fill(false);
+    this.tempSpecialCodes = new Array(len).fill(null); // 'E' veya 'Y'
     this.mvpIndex = null;
     this.bigNoIndex = null;
 
@@ -227,9 +385,9 @@ class Big5App {
       if (!photo.dataUrl) return;
 
       const currentScore = this.tempScores[idx];
+      const specialCode = this.tempSpecialCodes[idx]; // 'E' | 'Y' | null
       const isMvp = this.mvpIndex === idx;
       const isBigNo = this.bigNoIndex === idx;
-      const isEliminated = !!this.tempEliminated[idx];
 
       const card = document.createElement('div');
       card.className = `p-3 rounded-2xl border transition-all ${
@@ -243,25 +401,40 @@ class Big5App {
       }`;
 
       // 'E' Harfi Butonu (Otomatik 0 Puan)
-      const eBtnSelected = isEliminated;
+      const isESelected = specialCode === 'E';
+      // 'Y' Harfi Butonu (Otomatik 0 Puan)
+      const isYSelected = specialCode === 'Y';
+
       let pillsHtml = `
-        <button onclick="app.setEliminated(${idx})" 
-                title="E: Elendi / 0 Puan"
+        <!-- E Harfi Butonu (0 Puan) -->
+        <button onclick="app.setSpecialScore(${idx}, 'E')" 
+                title="E: Elendi (0 Puan)"
                 class="score-pill-btn min-w-[26px] h-7 rounded text-[11px] font-black border transition ${
-                  eBtnSelected
+                  isESelected
                     ? 'active bg-rose-600 text-white border-rose-400 font-black shadow-md shadow-rose-600/30'
                     : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-800/80'
                 }">
           E
         </button>
+
+        <!-- Y Harfi Butonu (0 Puan) -->
+        <button onclick="app.setSpecialScore(${idx}, 'Y')" 
+                title="Y: Yok / 0 Puan"
+                class="score-pill-btn min-w-[26px] h-7 rounded text-[11px] font-black border transition ${
+                  isYSelected
+                    ? 'active bg-amber-600 text-white border-amber-400 font-black shadow-md shadow-amber-600/30'
+                    : 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-800/80'
+                }">
+          Y
+        </button>
       `;
 
-      // 0'dan 15'e kadar puan hapları
+      // 0'dan 15'e kadar puan butonları
       for (let s = 0; s <= 15; s++) {
-        const isSelected = currentScore === s && !eBtnSelected;
+        const isSelected = currentScore === s && !isESelected && !isYSelected;
         pillsHtml += `
           <button onclick="app.setScore(${idx}, ${s})" 
-                  class="score-pill-btn flex-1 min-w-[22px] h-7 rounded text-[11px] font-bold border transition ${
+                  class="score-pill-btn flex-1 min-w-[20px] h-7 rounded text-[11px] font-bold border transition ${
                     isSelected 
                       ? 'active bg-pink-600 text-white border-pink-400 font-extrabold shadow' 
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
@@ -282,9 +455,12 @@ class Big5App {
         } else if (isBigNo) {
           scoreDisplay = `${currentScore - 1} <span class="text-xs text-rose-400 font-semibold">(-1 Big No)</span>`;
           scoreColorClass = 'text-rose-400';
-        } else if (isEliminated) {
+        } else if (isESelected) {
           scoreDisplay = `0 / 15 <span class="text-xs text-rose-400 font-bold">(E)</span>`;
           scoreColorClass = 'text-rose-400';
+        } else if (isYSelected) {
+          scoreDisplay = `0 / 15 <span class="text-xs text-amber-400 font-bold">(Y)</span>`;
+          scoreColorClass = 'text-amber-400';
         } else {
           scoreDisplay = `${currentScore} / 15`;
           scoreColorClass = 'text-pink-400';
@@ -328,14 +504,13 @@ class Big5App {
           </div>
         </div>
 
-        <!-- E ve 0-15 Puan Butonları -->
+        <!-- E, Y ve 0-15 Puan Butonları -->
         <div class="flex flex-wrap gap-1 pt-1 border-t border-slate-800/60">
           ${pillsHtml}
         </div>
 
-        <!-- MVP ve Big No Seçim Butonları (Yan Yana) -->
+        <!-- MVP ve Big No Seçim Butonları -->
         <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800/40">
-          <!-- MVP Butonu -->
           <button onclick="app.setMvp(${idx})"
                   class="py-1.5 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1 ${
                     isMvp
@@ -346,7 +521,6 @@ class Big5App {
             <span>${isMvp ? 'MVP (+1)' : 'MVP Seç (+1)'}</span>
           </button>
 
-          <!-- Big No Butonu -->
           <button onclick="app.setBigNo(${idx})"
                   class="py-1.5 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1 ${
                     isBigNo
@@ -365,18 +539,25 @@ class Big5App {
 
   setScore(idx, score) {
     this.tempScores[idx] = score;
-    this.tempEliminated[idx] = false;
+    this.tempSpecialCodes[idx] = null;
     this.updateProgress();
     this.renderRatingPhotos();
   }
 
-  setEliminated(idx) {
+  /**
+   * 4. 'E' ve 'Y' Harfi Seçimi (Her ikisi de 0 puan işler)
+   */
+  setSpecialScore(idx, code) {
     this.tempScores[idx] = 0;
-    this.tempEliminated[idx] = true;
+    this.tempSpecialCodes[idx] = code;
     this.updateProgress();
     this.renderRatingPhotos();
     const name = this.categoryData.photos[idx]?.name || '';
-    this.showToast(`🚫 ${name} için E seçildi (0 Puan)`, 'error');
+    if (code === 'E') {
+      this.showToast(`🚫 ${name} için 'E' seçildi (0 Puan)`);
+    } else {
+      this.showToast(`⚠️ ${name} için 'Y' seçildi (0 Puan)`);
+    }
   }
 
   setMvp(idx) {
@@ -421,6 +602,9 @@ class Big5App {
     }
   }
 
+  /**
+   * Puanları Kaydet & Merkezi Sunucuya Senkronize Et
+   */
   async saveRatingAndShowList() {
     const loadedIndices = [];
     this.categoryData.photos.forEach((p, i) => {
@@ -471,7 +655,12 @@ class Big5App {
     }
 
     this.categoryData.lastUpdated = new Date().toISOString();
+
+    // 1. Yerel IndexedDB'ye kaydet
     await Database.saveCategory(this.categoryData);
+
+    // 2. Merkezi Bulut Veritabanına asenkron push et (cihazlar arası paylaşım)
+    CloudSync.pushCategory(this.categoryData);
 
     const mvpName = this.mvpIndex !== null ? this.categoryData.photos[this.mvpIndex]?.name : null;
     const bigNoName = this.bigNoIndex !== null ? this.categoryData.photos[this.bigNoIndex]?.name : null;
@@ -479,7 +668,7 @@ class Big5App {
     if (mvpName) extraMsg += ` • ⭐ MVP: ${mvpName}`;
     if (bigNoName) extraMsg += ` • 🚫 Big No: ${bigNoName}`;
 
-    this.showToast(`${this.currentRound}. Tur kaydedildi${extraMsg}`);
+    this.showToast(`${this.currentRound}. Tur puanları kalıcı olarak kaydedildi${extraMsg}`);
 
     this.mvpIndex = null;
     this.bigNoIndex = null;
@@ -597,7 +786,7 @@ class Big5App {
 
     const isGirls = this.currentCategory === 'kizlar';
     const catName = isGirls ? 'Kızlar' : 'Erkekler';
-    const confirmReset = confirm(`${catName} kategorisindeki tüm turları ve verilen puanları sıfırlamak istediğinize emin misiniz?\n\n(Fotoğraflarınız silinmez, sadece puanlar 1. Tura döner)`);
+    const confirmReset = confirm(`${catName} kategorisindeki tüm turları ve verilen puanları sıfırlamak istediğinize emin misiniz?\n\n(Bu işlem tüm cihazlardaki puanları 1. Tura sıfırlar)`);
     if (!confirmReset) return;
 
     try {
@@ -608,14 +797,16 @@ class Big5App {
       });
       this.categoryData.roundsCount = 0;
       this.categoryData.lastUpdated = new Date().toISOString();
+      
       await Database.saveCategory(this.categoryData);
+      await CloudSync.pushCategory(this.categoryData);
 
       this.currentRound = 1;
       this.initTempScores(false);
 
       document.getElementById('view-results').classList.add('hidden');
       this.showRating();
-      this.showToast(`${catName} puanları sıfırlandı! 1. Turdan başlayabilirsiniz.`);
+      this.showToast(`${catName} puanları tüm cihazlar için sıfırlandı!`);
       await this.updateHomeStatuses();
     } catch (err) {
       console.error('Reset hatası:', err);
